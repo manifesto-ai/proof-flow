@@ -1,0 +1,23 @@
+{
+  "name": "proof-flow",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^7.2.0",
+    "@manifesto-ai/app": "^2.1.1",
+    "@manifesto-ai/core": "^2.1.1",
+    "@manifesto-ai/host": "^2.0.2",
+    "@manifesto-ai/world": "^2.1.1",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

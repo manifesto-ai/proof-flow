@@ -1,0 +1,204 @@
+domain ProofFlow {
+
+  // ================================
+  // Types
+  // ================================
+
+  type NodeKind =
+    "theorem" | "lemma" | "have" | "let" | "suffices" |
+    "show" | "calc_step" | "case" | "sorry" | "tactic_block"
+
+  type StatusKind = "resolved" | "error" | "sorry" | "in_progress"
+
+  type ErrorCategory =
+    "TYPE_MISMATCH" | "UNKNOWN_IDENTIFIER" | "TACTIC_FAILED" |
+    "UNSOLVED_GOALS" | "TIMEOUT" | "KERNEL_ERROR" |
+    "SYNTAX_ERROR" | "OTHER"
+
+  type Range = {
+    startLine: number,
+    startCol: number,
+    endLine: number,
+    endCol: number
+  }
+
+  type NodeStatus = {
+    kind: StatusKind,
+    errorMessage: string | null,
+    errorCategory: ErrorCategory | null
+  }
+
+  type ProofNode = {
+    id: string,
+    kind: NodeKind,
+    label: string,
+    leanRange: Range,
+    goal: string | null,
+    status: NodeStatus,
+    children: Array<string>,
+    dependencies: Array<string>
+  }
+
+  type DagMetrics = {
+    totalNodes: number,
+    resolvedCount: number,
+    errorCount: number,
+    sorryCount: number,
+    inProgressCount: number,
+    maxDepth: number
+  }
+
+  type ProofDAG = {
+    fileUri: string,
+    rootIds: Array<string>,
+    nodes: Record<string, ProofNode>,
+    extractedAt: number,
+    metrics: DagMetrics | null
+  }
+
+  type FileState = {
+    fileUri: string,
+    dag: ProofDAG | null,
+    lastSyncedAt: number | null
+  }
+
+  type LayoutDirection = "topDown" | "leftRight"
+
+  type UiState = {
+    panelVisible: boolean,
+    activeFileUri: string | null,
+    selectedNodeId: string | null,
+    cursorNodeId: string | null,
+    layout: LayoutDirection,
+    zoom: number,
+    collapseResolved: boolean
+  }
+
+  type JsonValue = string | number | boolean | null
+
+  type HistoryState = {
+    version: string,
+    files: Record<string, JsonValue>
+  }
+
+  type PatternsState = {
+    version: string,
+    entries: Record<string, JsonValue>,
+    totalAttempts: number,
+    updatedAt: number | null
+  }
+
+  // ================================
+  // State
+  // ================================
+
+  state {
+    appVersion: string = "0.1.0"
+
+    // Record<FileUri, FileState> - updated by Host handlers only
+    files: Record<string, FileState> = {}
+
+    // UI state - updated by Core flows only
+    ui: UiState = {
+      panelVisible: true,
+      activeFileUri: null,
+      selectedNodeId: null,
+      cursorNodeId: null,
+      layout: "topDown",
+      zoom: 1.0,
+      collapseResolved: false
+    }
+
+    // v0.2 (INFORMATIVE)
+    history: HistoryState = { version: "0.2.0", files: {} }
+
+    // v0.3 (INFORMATIVE)
+    patterns: PatternsState = {
+      version: "0.3.0",
+      entries: {},
+      totalAttempts: 0,
+      updatedAt: null
+    }
+  }
+
+  // ================================
+  // Computed
+  // ================================
+
+  computed activeFileState =
+    isNotNull(ui.activeFileUri) ? at(files, ui.activeFileUri) : null
+
+  computed activeDag =
+    isNotNull(activeFileState) ? activeFileState.dag : null
+
+  computed selectedNode =
+    and(isNotNull(activeDag), isNotNull(ui.selectedNodeId))
+      ? at(activeDag.nodes, ui.selectedNodeId)
+      : null
+
+  computed summaryMetrics =
+    isNotNull(activeDag) ? activeDag.metrics : null
+
+  // ================================
+  // Actions
+  // ================================
+
+  action dag_sync(fileUri: string) {
+    onceIntent {
+      effect proof_flow.dag.extract({ fileUri: fileUri })
+    }
+  }
+
+  action file_activate(fileUri: string) {
+    when neq(ui.activeFileUri, fileUri) {
+      patch ui.activeFileUri = fileUri
+      patch ui.selectedNodeId = null
+      patch ui.cursorNodeId = null
+    }
+  }
+
+  action node_select(nodeId: string)
+    available when and(isNotNull(activeDag), isNotNull(ui.activeFileUri))
+  {
+    when isNotNull(at(activeDag.nodes, nodeId)) {
+      patch ui.selectedNodeId = nodeId
+
+      onceIntent {
+        effect proof_flow.editor.reveal({
+          fileUri: ui.activeFileUri,
+          range: at(activeDag.nodes, nodeId).leanRange
+        })
+      }
+    }
+  }
+
+  action cursor_sync(resolvedNodeId: string | null) {
+    when true {
+      patch ui.cursorNodeId = resolvedNodeId
+    }
+  }
+
+  action panel_toggle() {
+    when true {
+      patch ui.panelVisible = not(ui.panelVisible)
+    }
+  }
+
+  action layout_set(layout: LayoutDirection) {
+    when true {
+      patch ui.layout = layout
+    }
+  }
+
+  action zoom_set(zoom: number) {
+    when true {
+      patch ui.zoom = clamp(zoom, 0.1, 5.0)
+    }
+  }
+
+  action collapse_toggle() {
+    when true {
+      patch ui.collapseResolved = not(ui.collapseResolved)
+    }
+  }
+}
