@@ -135,19 +135,34 @@ domain ProofFlow {
   computed uiZoom = coalesce(ui.zoom, 1.0)
   computed uiCollapseResolved = coalesce(ui.collapseResolved, false)
 
-  computed activeFileState =
-    isNotNull(uiActiveFileUri) ? at(filesIndex, uiActiveFileUri) : null
-
   computed activeDag =
-    isNotNull(activeFileState) ? activeFileState.dag : null
+    and(
+      isNotNull(uiActiveFileUri),
+      isNotNull(at(filesIndex, uiActiveFileUri)),
+      isNotNull(at(filesIndex, uiActiveFileUri).dag)
+    )
+      ? at(filesIndex, uiActiveFileUri).dag
+      : null
 
   computed selectedNode =
-    and(isNotNull(activeDag), isNotNull(uiSelectedNodeId))
-      ? at(activeDag.nodes, uiSelectedNodeId)
+    and(
+      isNotNull(uiActiveFileUri),
+      isNotNull(uiSelectedNodeId),
+      isNotNull(at(filesIndex, uiActiveFileUri)),
+      isNotNull(at(filesIndex, uiActiveFileUri).dag),
+      isNotNull(at(at(filesIndex, uiActiveFileUri).dag.nodes, uiSelectedNodeId))
+    )
+      ? at(at(filesIndex, uiActiveFileUri).dag.nodes, uiSelectedNodeId)
       : null
 
   computed summaryMetrics =
-    isNotNull(activeDag) ? activeDag.metrics : null
+    and(
+      isNotNull(uiActiveFileUri),
+      isNotNull(at(filesIndex, uiActiveFileUri)),
+      isNotNull(at(filesIndex, uiActiveFileUri).dag)
+    )
+      ? at(filesIndex, uiActiveFileUri).dag.metrics
+      : null
 
   // ================================
   // Actions

@@ -25,10 +25,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@manifesto-ai/app": "^2.2.0",
     "@proof-flow/host": "workspace:*",
     "@proof-flow/schema": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "@types/vscode": "^1.90.0"
   }
 }

@@ -9,8 +9,14 @@ import {
   type LeanDiagnosticSeverity
 } from '@proof-flow/host'
 import { createProofFlowApp } from './config.js'
+import { createProofFlowWorld } from './worldstore.js'
+import {
+  ProjectionPanelController,
+  selectProjectionState
+} from './webview-panel.js'
 
 let app: App | null = null
+let panelController: ProjectionPanelController | null = null
 
 const isLeanDocument = (document: vscode.TextDocument): boolean => (
   document.languageId === 'lean'
@@ -127,10 +133,22 @@ const ensureApp = async (): Promise<App> => {
     return app
   }
 
+  const workspace = vscode.workspace.workspaceFolders?.[0]
+  if (!workspace) {
+    throw new Error('ProofFlow requires an opened workspace folder.')
+  }
+
   const schema = await readDomainMel()
+  const world = await createProofFlowWorld({
+    world: {
+      rootPath: workspace.uri.fsPath
+    }
+  })
+
   app = createProofFlowApp({
     schema,
-    effects: proofFlowEffects
+    effects: proofFlowEffects,
+    world
   })
   await app.ready()
   return app
@@ -151,8 +169,30 @@ const actSafely = async (type: string, input?: unknown): Promise<void> => {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
+  let readyApp: App
+
+  panelController = new ProjectionPanelController(context, {
+    onNodeSelect: async (nodeId) => {
+      await actSafely('node_select', { nodeId })
+    },
+    onTogglePanel: async () => {
+      await actSafely('panel_toggle')
+    },
+    onSetLayout: async (layout) => {
+      await actSafely('layout_set', { layout })
+    },
+    onSetZoom: async (zoom) => {
+      await actSafely('zoom_set', { zoom })
+    },
+    onToggleCollapse: async () => {
+      await actSafely('collapse_toggle')
+    }
+  })
+
+  context.subscriptions.push(panelController)
+
   try {
-    await ensureApp()
+    readyApp = await ensureApp()
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -160,12 +200,28 @@ export async function activate(context: vscode.ExtensionContext) {
     return
   }
 
+  const unsubscribeProjection = readyApp.subscribe(
+    (state) => selectProjectionState(state),
+    (projection) => {
+      panelController?.setState(projection)
+    }
+  )
+  context.subscriptions.push(new vscode.Disposable(unsubscribeProjection))
+
   const togglePanel = vscode.commands.registerCommand('proof-flow.hello', async () => {
+    const visible = app?.getState<ProofFlowState>().data.ui.panelVisible ?? false
+
+    if (visible && !panelController?.isOpen()) {
+      panelController?.reveal()
+      return
+    }
+
     await actSafely('panel_toggle')
 
-    const visible = app?.getState<ProofFlowState>().data.ui.panelVisible ?? false
-    const label = visible ? 'visible' : 'hidden'
-    void vscode.window.showInformationMessage(`ProofFlow panel: ${label}`)
+    const nextVisible = app?.getState<ProofFlowState>().data.ui.panelVisible ?? false
+    if (nextVisible) {
+      panelController?.reveal()
+    }
   })
 
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
@@ -239,6 +295,9 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
+  panelController?.dispose()
+  panelController = null
+
   if (!app) {
     return
   }

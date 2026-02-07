@@ -1252,41 +1252,41 @@ ErrorCategory assigned by Host in `dag.extract` handler. Rule-based pattern matc
 ### 14.1 ProofFlow v0.1 Checklist
 
 **MEL Source (§5):**
-- [ ] `domain.mel` compiles without errors via `compileMelDomain()`
-- [ ] All effects inside `onceIntent` or equivalent guard (FDR-MEL-020)
-- [ ] All patches inside `when`, `once`, or `onceIntent` guards (FDR-MEL-020)
-- [ ] No `$`-prefixed identifiers in domain code (FDR-MEL-045)
-- [ ] No inline object types in state fields (named types only)
-- [ ] No `T?` / `T[]` / `any` type syntax (use `T | null` / `Array<T>` / named types)
-- [ ] No top-level effect declarations (effects inside action bodies only)
-- [ ] Effect params use brace syntax: `effect name({ key: val })`
-- [ ] Actions with preconditions use `available when` (MEL-ACTION-5)
+- [x] `domain.mel` compiles without errors via `compileMelDomain()`
+- [x] All effects inside `onceIntent` or equivalent guard (FDR-MEL-020)
+- [x] All patches inside `when`, `once`, or `onceIntent` guards (FDR-MEL-020)
+- [x] No `$`-prefixed identifiers in domain code (FDR-MEL-045)
+- [x] No inline object types in state fields (named types only)
+- [x] No `T?` / `T[]` / `any` type syntax (use `T | null` / `Array<T>` / named types)
+- [x] No top-level effect declarations (effects inside action bodies only)
+- [x] Effect params use brace syntax: `effect name({ key: val })`
+- [x] Actions with preconditions use `available when` (MEL-ACTION-5)
 
 **DomainSchema (§6):**
-- [ ] Generated `PROOFFLOW_SCHEMA` passes `Core.validate()`
-- [ ] ComputedSpec uses `fields` wrapper with `computed.*` key prefix
-- [ ] `at()` ExprNode for all dynamic Record lookups
-- [ ] No `undefined` literals (null only)
+- [x] Generated `PROOFFLOW_SCHEMA` passes `Core.validate()`
+- [x] ComputedSpec uses `fields` wrapper with `computed.*` key prefix
+- [x] `at()` ExprNode for all dynamic Record lookups
+- [x] No `undefined` literals (null only)
 
 **Effect Handlers (§7):**
-- [ ] All handlers registered in `PROOFFLOW_EFFECTS`
-- [ ] `dag.extract` uses `merge` at `files` path (never `files.${uri}.*`)
-- [ ] All return `Patch[]`, never throw
-- [ ] Zod validation inside handlers
-- [ ] No domain logic in handlers
-- [ ] Timestamp source is captured once per handler run
+- [x] All handlers registered in `PROOFFLOW_EFFECTS`
+- [x] `dag.extract` uses `merge` at `files` path (never `files.${uri}.*`)
+- [x] All return `Patch[]`, never throw
+- [x] Zod validation inside handlers
+- [x] No domain logic in handlers
+- [x] Timestamp source is captured once per handler run
 
 **AppConfig (§8):**
-- [ ] `createApp(config)` with all required fields
-- [ ] `validation.effects: 'strict'`
+- [x] `createApp(config)` with all required fields
+- [x] `validation.effects: 'strict'`
 - [ ] Auto-approve PolicyService
 - [ ] App applies `withPlatformNamespaces()` (APP-NS-1)
 
 **Lifecycle (§9):**
-- [ ] `activate` → `app.ready()` before `app.act()`
-- [ ] `deactivate` → `app.dispose()`
-- [ ] All events → `app.act()`
-- [ ] State reads via `app.subscribe()`
+- [x] `activate` → `app.ready()` before `app.act()`
+- [x] `deactivate` → `app.dispose()`
+- [x] All events → `app.act()`
+- [x] State reads via `app.subscribe()`
 
 **Forbidden Patterns (§12):**
 - [ ] FORBID-1 through FORBID-10 verified

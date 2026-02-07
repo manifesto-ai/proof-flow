@@ -3,6 +3,7 @@ import { createApp, type App, type AppConfig, type Effects } from '@manifesto-ai
 export type ProofFlowAppOptions = {
   schema: string
   effects: Effects
+  world?: AppConfig['world']
 }
 
 /**
@@ -13,6 +14,7 @@ export const createProofFlowApp = (options: ProofFlowAppOptions): App => {
   const config: AppConfig = {
     schema: options.schema,
     effects: options.effects,
+    world: options.world,
     validation: { effects: 'strict' },
     actorPolicy: {
       mode: 'require',

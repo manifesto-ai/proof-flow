@@ -7,9 +7,10 @@
 - ✅ Core intent tests written (MEL injected)
 - ✅ Tests re-run on Manifesto latest (`@manifesto-ai/*` 2.2.x)
 - ✅ App wiring baseline (effects-first AppConfig + extension lifecycle)
+- ✅ Custom World adapter baseline (persisted MemoryWorldStore)
 - ✅ Host effect implementation (`dag.extract` parser + validation pipeline)
 - ✅ Lineage/replay invariants test baseline
-- ⏳ Projection-only UI integration
+- ✅ Projection-only UI baseline (WebView + app.subscribe projection)
 
 ## Checkpoints
 
@@ -25,7 +26,7 @@
 
 ### 2. App Skeleton (Manifesto v2.2+)
 - [x] AppConfig wiring (MEL text injection + `effects` map)
-- [ ] Custom World adapter (optional, world-owned persistence)
+- [x] Custom World adapter (optional, world-owned persistence)
 - [x] Actor/Authority policy (single-actor auto-approve)
 - [x] VS Code lifecycle wiring (`activate`/`ready`/`app.act`/`deactivate`)
 
@@ -40,5 +41,5 @@
 - [x] World lineage/replay tests (determinism + storage integrity)
 
 ### 5. Projection-Only UI (최후순위)
-- [ ] Read-only projection from `Snapshot.data` and `Snapshot.computed`
-- [ ] DAG view + summary metrics (no domain logic in UI)
+- [x] Read-only projection from `Snapshot.data` and `Snapshot.computed`
+- [x] DAG view + summary metrics (no domain logic in UI)
