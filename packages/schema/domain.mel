@@ -125,15 +125,25 @@ domain ProofFlow {
   // Computed
   // ================================
 
+  computed filesIndex = coalesce(files, {})
+
+  computed uiPanelVisible = coalesce(ui.panelVisible, true)
+  computed uiActiveFileUri = coalesce(ui.activeFileUri, null)
+  computed uiSelectedNodeId = coalesce(ui.selectedNodeId, null)
+  computed uiCursorNodeId = coalesce(ui.cursorNodeId, null)
+  computed uiLayout = coalesce(ui.layout, "topDown")
+  computed uiZoom = coalesce(ui.zoom, 1.0)
+  computed uiCollapseResolved = coalesce(ui.collapseResolved, false)
+
   computed activeFileState =
-    isNotNull(ui.activeFileUri) ? at(files, ui.activeFileUri) : null
+    isNotNull(uiActiveFileUri) ? at(filesIndex, uiActiveFileUri) : null
 
   computed activeDag =
     isNotNull(activeFileState) ? activeFileState.dag : null
 
   computed selectedNode =
-    and(isNotNull(activeDag), isNotNull(ui.selectedNodeId))
-      ? at(activeDag.nodes, ui.selectedNodeId)
+    and(isNotNull(activeDag), isNotNull(uiSelectedNodeId))
+      ? at(activeDag.nodes, uiSelectedNodeId)
       : null
 
   computed summaryMetrics =
@@ -150,23 +160,37 @@ domain ProofFlow {
   }
 
   action file_activate(fileUri: string) {
-    when neq(ui.activeFileUri, fileUri) {
-      patch ui.activeFileUri = fileUri
-      patch ui.selectedNodeId = null
-      patch ui.cursorNodeId = null
+    when neq(uiActiveFileUri, fileUri) {
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: fileUri,
+        selectedNodeId: null,
+        cursorNodeId: null,
+        layout: uiLayout,
+        zoom: uiZoom,
+        collapseResolved: uiCollapseResolved
+      }
     }
   }
 
   action node_select(nodeId: string)
-    available when and(isNotNull(activeDag), isNotNull(ui.activeFileUri))
+    available when isNotNull(uiActiveFileUri)
   {
-    when isNotNull(at(activeDag.nodes, nodeId)) {
-      patch ui.selectedNodeId = nodeId
+    when true {
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: nodeId,
+        cursorNodeId: uiCursorNodeId,
+        layout: uiLayout,
+        zoom: uiZoom,
+        collapseResolved: uiCollapseResolved
+      }
 
       onceIntent {
         effect proof_flow.editor.reveal({
-          fileUri: ui.activeFileUri,
-          range: at(activeDag.nodes, nodeId).leanRange
+          fileUri: uiActiveFileUri,
+          nodeId: nodeId
         })
       }
     }
@@ -174,31 +198,71 @@ domain ProofFlow {
 
   action cursor_sync(resolvedNodeId: string | null) {
     when true {
-      patch ui.cursorNodeId = resolvedNodeId
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: uiSelectedNodeId,
+        cursorNodeId: resolvedNodeId,
+        layout: uiLayout,
+        zoom: uiZoom,
+        collapseResolved: uiCollapseResolved
+      }
     }
   }
 
   action panel_toggle() {
     when true {
-      patch ui.panelVisible = not(ui.panelVisible)
+      patch ui = {
+        panelVisible: not(uiPanelVisible),
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: uiSelectedNodeId,
+        cursorNodeId: uiCursorNodeId,
+        layout: uiLayout,
+        zoom: uiZoom,
+        collapseResolved: uiCollapseResolved
+      }
     }
   }
 
   action layout_set(layout: LayoutDirection) {
     when true {
-      patch ui.layout = layout
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: uiSelectedNodeId,
+        cursorNodeId: uiCursorNodeId,
+        layout: layout,
+        zoom: uiZoom,
+        collapseResolved: uiCollapseResolved
+      }
     }
   }
 
   action zoom_set(zoom: number) {
     when true {
-      patch ui.zoom = clamp(zoom, 0.1, 5.0)
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: uiSelectedNodeId,
+        cursorNodeId: uiCursorNodeId,
+        layout: uiLayout,
+        zoom: max(0.1, min(zoom, 5.0)),
+        collapseResolved: uiCollapseResolved
+      }
     }
   }
 
   action collapse_toggle() {
     when true {
-      patch ui.collapseResolved = not(ui.collapseResolved)
+      patch ui = {
+        panelVisible: uiPanelVisible,
+        activeFileUri: uiActiveFileUri,
+        selectedNodeId: uiSelectedNodeId,
+        cursorNodeId: uiCursorNodeId,
+        layout: uiLayout,
+        zoom: uiZoom,
+        collapseResolved: not(uiCollapseResolved)
+      }
     }
   }
 }

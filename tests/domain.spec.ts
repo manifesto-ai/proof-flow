@@ -1,10 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createTestApp, type App, type ServiceMap } from '@manifesto-ai/app'
+import { createTestApp, type App, type Effects } from '@manifesto-ai/app'
 import {
   type ProofDAG,
-  type ProofFlowState,
-  type Range
+  type ProofFlowState
 } from '../packages/schema/src/index.js'
 
 const domainMelPromise = readFile(
@@ -14,10 +13,10 @@ const domainMelPromise = readFile(
 
 const apps: App[] = []
 
-const createApp = async (services: ServiceMap) => {
+const createApp = async (effects: Effects) => {
   const domainMel = await domainMelPromise
   const app = createTestApp(domainMel, {
-    services,
+    effects,
     actorPolicy: {
       mode: 'require',
       defaultActor: {
@@ -68,15 +67,21 @@ describe('ProofFlow domain actions', () => {
     const dag = makeDag(fileUri)
 
     const app = await createApp({
-      'proof_flow.dag.extract': (params, ctx) => {
+      'proof_flow.dag.extract': async (params) => {
         const { fileUri: target } = params as { fileUri: string }
-        return ctx.patch.merge('files', {
-          [target]: {
-            fileUri: target,
-            dag,
-            lastSyncedAt: 456
+        return [
+          {
+            op: 'merge',
+            path: 'files',
+            value: {
+              [target]: {
+                fileUri: target,
+                dag,
+                lastSyncedAt: 456
+              }
+            }
           }
-        })
+        ]
       }
     })
 
@@ -103,21 +108,27 @@ describe('ProofFlow domain actions', () => {
   it('node.select sets selection and triggers editor reveal', async () => {
     const fileUri = 'file:///proof.lean'
     const dag = makeDag(fileUri)
-    const revealCalls: Array<{ fileUri: string; range: Range }> = []
+    const revealCalls: Array<{ fileUri: string; nodeId: string }> = []
 
     const app = await createApp({
-      'proof_flow.dag.extract': (params, ctx) => {
+      'proof_flow.dag.extract': async (params) => {
         const { fileUri: target } = params as { fileUri: string }
-        return ctx.patch.merge('files', {
-          [target]: {
-            fileUri: target,
-            dag,
-            lastSyncedAt: 456
+        return [
+          {
+            op: 'merge',
+            path: 'files',
+            value: {
+              [target]: {
+                fileUri: target,
+                dag,
+                lastSyncedAt: 456
+              }
+            }
           }
-        })
+        ]
       },
-      'proof_flow.editor.reveal': (params) => {
-        revealCalls.push(params as { fileUri: string; range: Range })
+      'proof_flow.editor.reveal': async (params) => {
+        revealCalls.push(params as { fileUri: string; nodeId: string })
         return []
       }
     })
@@ -130,7 +141,7 @@ describe('ProofFlow domain actions', () => {
     expect(state.data.ui.selectedNodeId).toBe('root')
     expect(revealCalls).toHaveLength(1)
     expect(revealCalls[0]?.fileUri).toBe(fileUri)
-    expect(revealCalls[0]?.range).toEqual(dag.nodes.root.leanRange)
+    expect(revealCalls[0]?.nodeId).toBe('root')
   })
 
   it('panel.toggle and layout.set update ui fields', async () => {

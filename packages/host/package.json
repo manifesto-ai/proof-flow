@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@proof-flow/schema": "workspace:*"
+    "@proof-flow/schema": "workspace:*",
+    "zod": "^4.1.12"
   }
 }

@@ -25,7 +25,7 @@
 4. [Layering & Boundary](#4-layering--boundary)
 5. [Domain Definition (MEL Source)](#5-domain-definition-mel-source)
 6. [DomainSchema (Core IR)](#6-domainschema-core-ir)
-7. [Effect Handlers (ServiceMap)](#9-effect-handlers-servicemap)
+7. [Effect Handlers (Effects Map)](#9-effect-handlers-effects-map)
 8. [AppConfig Instantiation](#10-appconfig-instantiation)
 9. [VS Code ↔ Manifesto Lifecycle](#11-vs-code--manifesto-lifecycle)
 10. [WorldStore Configuration](#12-worldstore-configuration)
@@ -800,16 +800,16 @@ app.act('node_select', { nodeId: 'node-abc' });
 
 ---
 
-## 7. Effect Handlers (ServiceMap)
+## 7. Effect Handlers (Effects Map)
 
-Effect handlers are registered via `AppConfig.services` (App SPEC §6.1). They are **IO adapters** — they execute external operations and return `Patch[]`. They MUST NOT contain domain logic (Host Contract §7.4).
+Effect handlers are registered via `AppConfig.effects` (App SPEC v2.2+). They are **IO adapters** — they execute external operations and return `Patch[]`. They MUST NOT contain domain logic (Host Contract §7.4).
 
 ### 7.1 Registration
 
 ```typescript
-import type { EffectHandler } from '@manifesto-ai/host';
+import type { Effects } from '@manifesto-ai/app';
 
-export const PROOFFLOW_SERVICES: Record<string, EffectHandler> = {
+export const PROOFFLOW_EFFECTS: Effects = {
   'proof_flow.dag.extract':      dagExtractHandler,
   'proof_flow.editor.reveal':    editorRevealHandler,
   'proof_flow.editor.getCursor': getCursorHandler,
@@ -822,15 +822,16 @@ export const PROOFFLOW_SERVICES: Record<string, EffectHandler> = {
 | SVC-2 | MUST | Handlers MUST return `Patch[]` |
 | SVC-3 | MUST NOT | Handlers MUST NOT throw (errors expressed as patches) |
 | SVC-4 | MUST NOT | Handlers MUST NOT contain domain logic |
-| SVC-5 | SHOULD | `validation.services` SHOULD be `'strict'` |
+| SVC-5 | SHOULD | `validation.effects` SHOULD be `'strict'` |
 
 ### 7.2 proof_flow.dag.extract
 
 **This is where `files` gets updated.** The handler returns a `merge` patch at the `files` path, keeping the fileUri as an object key (never a path segment).
 
 ```typescript
-const dagExtractHandler: EffectHandler = async (type, params, context) => {
+const dagExtractHandler: EffectHandler = async (params, context) => {
   const { fileUri } = params as { fileUri: string };
+  const syncedAt = Date.now();
 
   // Preserve existing FileState fields for forward-compatibility.
   // When FileState gains new fields in v0.2+, this prevents data loss
@@ -858,7 +859,7 @@ const dagExtractHandler: EffectHandler = async (type, params, context) => {
           [fileUri]: {
             ...prev,
             dag: null,
-            lastSyncedAt: context.requirement.createdAt,
+            lastSyncedAt: syncedAt,
           },
         },
       }];
@@ -872,7 +873,7 @@ const dagExtractHandler: EffectHandler = async (type, params, context) => {
         [fileUri]: {
           ...prev,
           dag: validated.data,
-          lastSyncedAt: context.requirement.createdAt,
+          lastSyncedAt: syncedAt,
         },
       },
     }];
@@ -886,7 +887,7 @@ const dagExtractHandler: EffectHandler = async (type, params, context) => {
         [fileUri]: {
           ...prev,
           dag: null,
-          lastSyncedAt: context.requirement.createdAt,
+          lastSyncedAt: syncedAt,
         },
       },
     }];
@@ -901,9 +902,9 @@ const dagExtractHandler: EffectHandler = async (type, params, context) => {
 - `merge` preserves existing file entries; only the keyed entry is updated ✅
 - The fileUri becomes an object key in the `value`, never a path segment ✅
 
-**Why `context.requirement.createdAt` for timestamp:**
+**Why `syncedAt` captured once:**
 
-Using the requirement's creation time (already determined before the effect executed) ensures timestamp consistency within the same intent. `Date.now()` inside the handler would create non-deterministic values.
+Capturing timestamp once per handler run ensures every patch in that run uses the same value.
 
 **Why `...prev` spread before new fields (prev-merge pattern):**
 
@@ -914,8 +915,14 @@ Spreading `prev` preserves any existing fields the handler doesn't own. This is 
 ### 7.3 proof_flow.editor.reveal
 
 ```typescript
-const editorRevealHandler: EffectHandler = async (type, params, context) => {
-  const { fileUri, range } = params as { fileUri: string; range: Range };
+const editorRevealHandler: EffectHandler = async (params, context) => {
+  const { fileUri, nodeId } = params as { fileUri: string; nodeId: string };
+  const dag = (context.snapshot.data as any)?.files?.[fileUri]?.dag;
+  const range = dag?.nodes?.[nodeId]?.leanRange;
+
+  if (!range) {
+    return [];
+  }
 
   // Fire-and-forget VS Code navigation. No state change.
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(fileUri));
@@ -929,7 +936,7 @@ const editorRevealHandler: EffectHandler = async (type, params, context) => {
 ### 7.4 proof_flow.editor.getCursor
 
 ```typescript
-const getCursorHandler: EffectHandler = async (type, params, context) => {
+const getCursorHandler: EffectHandler = async (params, context) => {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     return [{ op: 'set', path: 'ui.cursorNodeId', value: null }];
@@ -969,48 +976,29 @@ The **exact** `AppConfig` wiring ProofFlow as a Manifesto App.
 
 ```typescript
 import { createApp } from '@manifesto-ai/app';
-import { createHost } from '@manifesto-ai/host';
-import { compileMelDomain } from '@manifesto-ai/compiler';
 import type { AppConfig } from '@manifesto-ai/app';
-import { PROOFFLOW_SCHEMA } from '@proof-flow/schema';
-import { PROOFFLOW_SERVICES } from '@proof-flow/host';
-import { createProofFlowWorldStore } from '@proof-flow/app/worldstore';
+import { PROOFFLOW_EFFECTS } from '@proof-flow/host';
 
-export function createProofFlowApp(workspaceUri: string, username: string) {
+export function createProofFlowApp(schema: string) {
   const config: AppConfig = {
-    // Schema: pre-compiled DomainSchema OR MEL text (App compiles if string)
-    schema: PROOFFLOW_SCHEMA,
-
-    // Host: manages compute/apply loop
-    host: createHost(),
-
-    // WorldStore: persistence
-    worldStore: createProofFlowWorldStore({
-      root: `${workspaceUri}/.proof-flow/worlds/${username}`,
-      checkpointInterval: 20,
-      maxDeltaChain: 50,
-    }),
-
-    // Policy: single-actor auto-approve (ADR-003)
-    policyService: {
-      evaluateProposal: async () => ({
-        approved: true,
-        scope: { allowedPaths: ['**'] },
-        timestamp: Date.now(),
-      }),
-      deriveExecutionKey: (p) => `proposal:${p.proposalId}`,
-    },
+    // Schema: MEL text or compiled DomainSchema
+    schema,
 
     // Effect handlers
-    services: PROOFFLOW_SERVICES,
+    effects: PROOFFLOW_EFFECTS,
 
     // Strict: fail if schema effects have no handler
-    validation: { services: 'strict' },
+    validation: { effects: 'strict' },
+
+    // Policy: single-actor auto-approve (ADR-003)
+    actorPolicy: {
+      mode: 'require',
+      defaultActor: { actorId: 'proof-flow:local-user', kind: 'human' },
+    },
   };
 
   return createApp(config);
-  // createApp() calls withPlatformNamespaces() internally (APP-NS-1)
-  // → injects $host, $mel with defaults into schema
+  // Host/World are created internally by @manifesto-ai/app (v2.2+)
 }
 ```
 
@@ -1027,12 +1015,15 @@ export function createProofFlowApp(workspaceUri: string, username: string) {
 
 ```typescript
 // extension.ts
-let app: App;
+let app: App | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
-  const wsUri = vscode.workspace.workspaceFolders?.[0]?.uri.toString() ?? '';
-  app = createProofFlowApp(wsUri, resolveUsername());
-  await app.ready(); // Schema validated, $mel injected, WorldStore restored
+  const schema = await readDomainMelFromWorkspace();
+  app = createProofFlowApp({
+    schema,
+    effects: PROOFFLOW_EFFECTS,
+  });
+  await app.ready(); // MUST happen before first app.act()
 
   // ALL events → app.act()
   context.subscriptions.push(
@@ -1086,7 +1077,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-  await app?.dispose(); // Drains actions, flushes WorldStore
+  await app?.dispose(); // Drains actions and releases runtime resources
 }
 ```
 
@@ -1171,7 +1162,7 @@ ErrorCategory assigned by Host in `dag.extract` handler. Rule-based pattern matc
 
 ```typescript
 // ❌ fs.writeFileSync('.proof-flow/history.json', data);
-// ✅ WorldStore handles all persistence via AppConfig.worldStore
+// ✅ Persistence is world-owned (internal World by default, or AppConfig.world)
 ```
 
 ### 12.6 Bypassing app.act() (FORBID-6)
@@ -1278,16 +1269,16 @@ ErrorCategory assigned by Host in `dag.extract` handler. Rule-based pattern matc
 - [ ] No `undefined` literals (null only)
 
 **Effect Handlers (§7):**
-- [ ] All handlers registered in `PROOFFLOW_SERVICES`
+- [ ] All handlers registered in `PROOFFLOW_EFFECTS`
 - [ ] `dag.extract` uses `merge` at `files` path (never `files.${uri}.*`)
 - [ ] All return `Patch[]`, never throw
 - [ ] Zod validation inside handlers
 - [ ] No domain logic in handlers
-- [ ] Timestamps from `requirement.createdAt`
+- [ ] Timestamp source is captured once per handler run
 
 **AppConfig (§8):**
 - [ ] `createApp(config)` with all required fields
-- [ ] `validation.services: 'strict'`
+- [ ] `validation.effects: 'strict'`
 - [ ] Auto-approve PolicyService
 - [ ] App applies `withPlatformNamespaces()` (APP-NS-1)
 

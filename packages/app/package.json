@@ -9,13 +9,14 @@
     "vscode": "^1.90.0"
   },
   "activationEvents": [
+    "onLanguage:lean",
     "onCommand:proof-flow.hello"
   ],
   "contributes": {
     "commands": [
       {
         "command": "proof-flow.hello",
-        "title": "ProofFlow: Hello"
+        "title": "ProofFlow: Toggle Panel"
       }
     ]
   },
