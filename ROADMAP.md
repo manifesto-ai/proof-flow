@@ -28,6 +28,7 @@
 - ✅ v0.4 suggestion domain contract (`attempt_suggest`, `suggestions_clear`, `SuggestionState`)
 - ✅ Host suggestion effect baseline (`proof_flow.attempt.suggest`) + deterministic ranking tests
 - ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
+- ✅ v0.4.1 stable goal source integration (`$/lean/plainGoal`, `$/lean/plainTermGoal`) + source stats
 - 🔜 v0.4.1 Goal fidelity spike (node-level goal extraction quality)
 - 🔜 v0.4.2 Suggestion closed loop (suggest -> apply -> attempt_record)
 - 🔜 v0.4.3 Start-Here triage (unresolved/sorry priority queue)
@@ -112,7 +113,8 @@
 - [x] `dag.extract` 입력 소스 확장 1차: `loadGoals` adapter hook + diagnostics/hover/command probe 수집 경로 추가
 - [x] `proof-flow.goalCoverageReport` 커맨드 추가(활성 DAG goal 채움률 즉시 측정)
 - [x] command probe 2차 강화: Lean goal command 동적 탐색 + 다중 호출 시그니처 + source stats 집계
-- [ ] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API) 직접 연동
+- [x] extension API probe 추가: `leanprover.lean4` export method 탐색 + source stats 집계
+- [x] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API: `$/lean/plainGoal`, `$/lean/plainTermGoal`) 직접 연동
 - [ ] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
 - [ ] 리포트: 정확도/누락 케이스/실패 패턴 문서화
 
