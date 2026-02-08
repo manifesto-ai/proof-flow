@@ -7,7 +7,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const sampleFiles = [
   'GoalFidelitySamples/Basic.lean',
-  'GoalFidelitySamples/MathlibSample.lean'
+  'GoalFidelitySamples/MathlibSample.lean',
+  'GoalFidelitySamples/StableOnly.lean'
 ]
 
 const findProofFlowExtension = () => {
@@ -26,6 +27,7 @@ const normalizeSnapshot = (snapshot, fileUri) => {
       ratio: 0,
       percent: '0.0',
       sources: null,
+      sourceKpi: null,
       readiness: {
         status: 'warming',
         waitedMs: 0,
@@ -43,6 +45,7 @@ const normalizeSnapshot = (snapshot, fileUri) => {
     ratio: Number(snapshot.ratio || 0),
     percent: String(snapshot.percent || '0.0'),
     sources: snapshot.sources || null,
+    sourceKpi: snapshot.sourceKpi || null,
     readiness: snapshot.readiness || {
       status: 'warming',
       waitedMs: 0,
@@ -99,6 +102,22 @@ async function run() {
   const totalNodes = results.reduce((sum, entry) => sum + entry.totalNodes, 0)
   const withGoal = results.reduce((sum, entry) => sum + entry.withGoal, 0)
   const ratio = totalNodes > 0 ? withGoal / totalNodes : 0
+  const stableHints = results.reduce((sum, entry) => sum + Number(entry.sources?.stableHints || 0), 0)
+  const declarationHints = results.reduce((sum, entry) => sum + Number(entry.sources?.declarationHints || 0), 0)
+  const diagnosticHints = results.reduce((sum, entry) => sum + Number(entry.sources?.diagnosticHints || 0), 0)
+  const hoverHints = results.reduce((sum, entry) => sum + Number(entry.sources?.hoverHints || 0), 0)
+  const apiHints = results.reduce((sum, entry) => sum + Number(entry.sources?.apiHints || 0), 0)
+  const commandHints = results.reduce((sum, entry) => sum + Number(entry.sources?.commandHints || 0), 0)
+  const fallbackHints = declarationHints + diagnosticHints + hoverHints + apiHints + commandHints
+  const totalHints = stableHints + fallbackHints
+  const stableHintRatio = totalHints > 0 ? stableHints / totalHints : 0
+  const fallbackHintRatio = totalHints > 0 ? fallbackHints / totalHints : 0
+  const fallbackDominantSamples = results
+    .filter((entry) => Boolean(entry.sourceKpi?.fallbackDominant))
+    .map((entry) => entry.sample)
+  const sourceAlerts = [...new Set(
+    results.flatMap((entry) => Array.isArray(entry.sourceKpi?.alerts) ? entry.sourceKpi.alerts : [])
+  )]
   const summary = {
     measuredAt: new Date().toISOString(),
     workspace: workspace.uri.fsPath,
@@ -106,6 +125,15 @@ async function run() {
     withGoal,
     ratio,
     percent: (ratio * 100).toFixed(1),
+    sourceKpi: {
+      totalHints,
+      stableHints,
+      fallbackHints,
+      stableHintRatio,
+      fallbackHintRatio,
+      fallbackDominantSamples,
+      alerts: sourceAlerts
+    },
     samples: results
   }
 
@@ -118,6 +146,18 @@ async function run() {
       totalNodes: entry.totalNodes,
       readiness: entry.readiness,
       probeFailures: entry.sources?.probeFailures?.slice(0, 3) ?? []
+    })), null, 2)}`
+  )
+
+  const stableHintSamples = results.filter((entry) => Number(entry.sources?.stableHints || 0) > 0)
+  assert.ok(
+    stableHintSamples.length > 0,
+    `Expected stable Lean goal source hints in at least one sample. Got: ${JSON.stringify(results.map((entry) => ({
+      sample: entry.sample,
+      stableHints: Number(entry.sources?.stableHints || 0),
+      declarationHints: Number(entry.sources?.declarationHints || 0),
+      readiness: entry.readiness,
+      probeFailures: entry.sources?.probeFailures?.slice(0, 4) ?? []
     })), null, 2)}`
   )
 

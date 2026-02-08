@@ -33,12 +33,21 @@
 - ✅ v0.4.2 Suggestion closed loop integration test (`tests/suggestion-closed-loop.spec.ts`)
 - ✅ v0.4.3 Start-Here triage (priority queue + panel + tests)
 - ✅ v0.4.1 P0 recovery batch 완료 (schema decouple + readiness gating + probe diagnostics + spike guardrail)
-- ⚠️ Goal coverage는 declaration fallback 기반으로 회복 (`66.7%`), stable Lean goal source는 추가 강화 필요
+- ✅ Goal-fidelity KPI/alert baseline (`stableHintRatio`, fallback dominance alerts)
+- ✅ Goal-fidelity 안정화 2차 (stable request retry + safe command probe + stable-only fixture guard)
+- ✅ v0.5 scoring v1 (category/sample/recency/node-local ranking)
+- ✅ v0.5 explainability v1 (projection reason string + panel 노출)
+- ✅ `G0` baseline 지표/러너/리포트 추가 (`reports/g0-baseline-report.json`)
+- ✅ attempt 데이터 품질 계측 + 저품질 `tacticKey` 패턴 반영 필터(History 유지, Pattern 제외)
+- ✅ suggestion TTL/상한 정책 + replay 복원 무결성 테스트 추가
+- ⚠️ Goal coverage `75.0%`, stable hint ratio `75.0%`이며 Mathlib 샘플은 stable 응답이 `nullish`로 돌아와 stable hint `0` 케이스가 남음
+- ✅ stable-first + fallback 구조에서 fallback-only 루프도 동작 가능함을 확인 (블로커 아님)
 
 ## Priority Queue
-1. P0: stable Lean goal source 실효성 강화 (fallback 의존도 축소)
-2. P1: v0.5 Recommendation Quality + State Hygiene
+1. P1-C: `G1` 실측 러너/리포트(stable source on/off A/B) 추가
+2. P1-D: Mathlib 샘플 stable source `nullish` 원인 분석(ready 타이밍/요청 경로/응답 파싱)
 3. P2: v0.6 Performance/CI Hardening
+4. Monitor: Goal-fidelity 품질(특히 Mathlib 샘플 stable hint `0` 재발 여부)
 
 ## Checkpoints
 
@@ -121,7 +130,10 @@
 - [x] P0 복구 2: Lean 준비 상태 게이팅(ready/sync 안정화) 후 goal snapshot 수집
 - [x] P0 복구 3: goal source probe 실패 원인/코드 로깅 및 snapshot에 원인 필드 추가
 - [x] P0 복구 4: spike CI 가드레일(최소 1 fixture에서 `withGoal > 0`) 추가
-- [ ] P0 후속 1: stable source(`$/lean/plainGoal`) 성공률 지표화 및 fallback 의존도 경보
+- [x] P0 후속 1: stable source(`$/lean/plainGoal`) 성공률 지표화 및 fallback 의존도 경보
+- [x] P0 후속 2: stable request 재시도 전략 추가(초기 transport race 완화)
+- [x] P0 후속 3: command probe를 known-safe 시그니처로 축소
+- [x] P0 후속 4: stable-source 전용 fixture(`StableOnly.lean`) + CI gate 추가
 
 ### 11. v0.4.2 Suggestion Closed Loop (P0)
 - [x] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
@@ -136,10 +148,16 @@
 - [x] 긴 증명 파일 기준 유효성 시나리오 테스트 추가
 
 ### 13. v0.5 Recommendation Quality + State Hygiene (P1)
-- [ ] 추천 스코어링 고도화: errorCategory 일치, sample, 최근성, node-local 이력 반영
-- [ ] recommendation explainability: 추천 근거 문자열/메타데이터 노출
-- [ ] suggestion TTL/상한 정책 추가(노드당 개수 제한, stale 정리)
-- [ ] world replay 무결성 테스트(정리 정책 적용 후 복원 일관성)
+- [x] 추천 스코어링 고도화: errorCategory 일치, sample, 최근성, node-local 이력 반영
+- [x] recommendation explainability: 추천 근거 문자열/메타데이터 노출
+- [x] `G0` baseline 지표 정의: goal text 없이도 추천 루프가 유의미한지 측정 지표 확정
+- [x] `G0` baseline 러너/리포트 추가: fallback-only 조건에서 pattern DB 효용 측정
+- [x] `G1` delta 지표 정의: stable goal source 포함 시 `G0` 대비 개선폭 측정
+- [x] attempt 데이터 품질 계측: tacticKey 추출 정확도/누락률 수집 + 저품질 입력 필터링 기준
+- [x] suggestion TTL/상한 정책 추가(노드당 개수 제한, stale 정리)
+- [x] world replay 무결성 테스트(정리 정책 적용 후 복원 일관성)
+- [ ] `G1` 실측 러너/리포트 추가: stable source on/off 조건에서 `G0` 대비 lift 계산
+- [ ] Mathlib sample 안정화: stable source `nullish` 재현/원인 분류/완화안 검증
 
 ### 14. v0.6 Performance / CI Hardening (P2)
 - [ ] 대형 증명 파일에서 incremental sync/debounce 최적화

@@ -85,6 +85,7 @@ export type ProjectionSuggestion = {
   successRate: number
   sourceCategory: ErrorCategory | null
   generatedAt: number
+  reason: string
 }
 
 export type ProjectionStartHereEntry = {
@@ -404,6 +405,18 @@ const toProjectionSuggestions = (
     return []
   }
 
+  const activeFileUri = state.ui.activeFileUri
+  const selectedCategory = (
+    activeFileUri && selectedNodeId
+      ? state.files[activeFileUri]?.dag?.nodes[selectedNodeId]?.status.errorCategory ?? null
+      : null
+  )
+  const nodeAttempts = (
+    activeFileUri && selectedNodeId
+      ? state.history.files[activeFileUri]?.nodes[selectedNodeId]?.attempts ?? {}
+      : {}
+  )
+
   return entries
     .map((entry): ProjectionSuggestion | null => {
       const candidate = asRecord(entry)
@@ -434,13 +447,36 @@ const toProjectionSuggestions = (
         ? sourceCategory
         : null
 
+      const tacticAttempts = Object.values(nodeAttempts)
+        .filter((attempt): attempt is AttemptRecord => attempt.tacticKey === tacticKey)
+      const tacticAttemptCount = tacticAttempts.length
+      const tacticSuccessCount = tacticAttempts
+        .filter((attempt) => attempt.result === 'success')
+        .length
+      const reasons: string[] = []
+
+      if (normalizedCategory !== null) {
+        reasons.push(
+          selectedCategory !== null && normalizedCategory === selectedCategory
+            ? `category-match:${normalizedCategory}`
+            : `category:${normalizedCategory}`
+        )
+      }
+      reasons.push(`sample:${asNumber(candidate.sampleSize)}`)
+      reasons.push(`winrate:${asNumber(candidate.successRate).toFixed(2)}`)
+      if (tacticAttemptCount > 0) {
+        reasons.push(`node-local:${tacticSuccessCount}/${tacticAttemptCount}`)
+      }
+      reasons.push(`rank:${asNumber(candidate.score).toFixed(2)}`)
+
       return {
         tacticKey,
         score: asNumber(candidate.score),
         sampleSize: asNumber(candidate.sampleSize),
         successRate: asNumber(candidate.successRate),
         sourceCategory: normalizedCategory,
-        generatedAt: asNullableNumber(candidate.generatedAt) ?? 0
+        generatedAt: asNullableNumber(candidate.generatedAt) ?? 0,
+        reason: reasons.join(' | ')
       }
     })
     .filter((entry): entry is ProjectionSuggestion => entry !== null)

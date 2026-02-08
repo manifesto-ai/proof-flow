@@ -37,6 +37,8 @@ export type BuildAttemptRecordPatchesOptions = Pick<
   'now' | 'createAttemptId'
 >
 
+const TACTIC_KEY_MAX_LENGTH = 72
+
 const ATTEMPT_RESULTS = new Set<AttemptResult>([
   'success',
   'error',
@@ -57,6 +59,10 @@ const ERROR_CATEGORIES = new Set<ErrorCategory>([
 
 const asString = (value: unknown): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
+)
+
+const asTrimmedString = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 )
 
 const asNullableString = (value: unknown): string | null => (
@@ -83,16 +89,34 @@ const parseAttemptResult = (value: unknown): AttemptResult | null => (
     : null
 )
 
+export const isPatternEligibleTacticKey = (tacticKey: string): boolean => {
+  const normalized = tacticKey.trim()
+  if (normalized.length === 0 || normalized.length > TACTIC_KEY_MAX_LENGTH) {
+    return false
+  }
+
+  if (/^auto:/i.test(normalized)) {
+    return false
+  }
+
+  // Pattern DB는 canonical tactic key를 기대한다.
+  if (/\s/.test(normalized)) {
+    return false
+  }
+
+  return true
+}
+
 const parseInput = (params: unknown): AttemptRecordInput | null => {
   const record = asRecord(params)
   if (!record) {
     return null
   }
 
-  const fileUri = asString(record.fileUri)
-  const nodeId = asString(record.nodeId)
-  const tactic = asString(record.tactic)
-  const tacticKey = asString(record.tacticKey)
+  const fileUri = asTrimmedString(record.fileUri)
+  const nodeId = asTrimmedString(record.nodeId)
+  const tactic = asTrimmedString(record.tactic)
+  const tacticKey = asTrimmedString(record.tacticKey)
   const result = parseAttemptResult(record.result)
 
   if (!fileUri || !nodeId || !tactic || !tacticKey || !result) {
@@ -166,18 +190,21 @@ export const buildAttemptRecordPatches = (
     sequence
   }) ?? createDefaultAttemptId({ timestamp, sequence })
 
-  return [
-    {
-      op: 'set',
-      path: 'history',
-      value: toHistoryPatchValue(snapshotData, input, timestamp, attemptId)
-    },
-    {
+  const patches: EffectPatch[] = [{
+    op: 'set',
+    path: 'history',
+    value: toHistoryPatchValue(snapshotData, input, timestamp, attemptId)
+  }]
+
+  if (isPatternEligibleTacticKey(input.tacticKey)) {
+    patches.push({
       op: 'set',
       path: 'patterns',
       value: toPatternsPatchValue(snapshotData, input, timestamp)
-    }
-  ]
+    })
+  }
+
+  return patches
 }
 
 const toHistoryPatchValue = (

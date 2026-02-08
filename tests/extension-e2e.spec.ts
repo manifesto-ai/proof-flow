@@ -541,6 +541,28 @@ describe('Extension E2E flow', () => {
 
     await extension.activate(context as any)
 
+    const snapshotCommand = env.getCommand('proof-flow.goalCoverageSnapshot')
+    expect(snapshotCommand).toBeTypeOf('function')
+
+    const snapshot = await snapshotCommand?.() as {
+      sourceKpi?: {
+        totalHints?: number
+        stableHints?: number
+        fallbackHints?: number
+        stableRatio?: number
+        fallbackRatio?: number
+        alerts?: string[]
+      }
+    } | undefined
+    expect(snapshot?.sourceKpi).toMatchObject({
+      totalHints: 0,
+      stableHints: 0,
+      fallbackHints: 0,
+      stableRatio: 0,
+      fallbackRatio: 0,
+      alerts: expect.arrayContaining(['NO_HINTS'])
+    })
+
     const reportCommand = env.getCommand('proof-flow.goalCoverageReport')
     expect(reportCommand).toBeTypeOf('function')
 
@@ -548,6 +570,9 @@ describe('Extension E2E flow', () => {
 
     expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('Goal coverage')
+    )
+    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('stableRatio=')
     )
 
     await extension.deactivate()

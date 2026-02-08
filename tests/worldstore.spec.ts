@@ -279,4 +279,105 @@ describe('ProofFlow custom world store', () => {
     expect(Object.keys((restored.data as any).history.files)).toEqual([fileUri])
     expect(Object.keys(patterns)).toEqual([patternKey])
   })
+
+  it('restores suggestion cleanup state consistently after replay', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'proof-flow-worldstore-'))
+    tempDirs.push(rootPath)
+
+    const storeA = await createProofFlowWorldStore({ rootPath })
+    const genesisId = 'w_genesis_suggestions' as any
+    const nextId = 'w_next_suggestions' as any
+    const staleNodeId = 'node.with.dot'
+    const freshNodeId = 'node.keep'
+
+    await storeA.initializeGenesis?.({
+      worldId: genesisId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-1',
+      createdAt: 10,
+      createdBy: null
+    } as any, {
+      data: {
+        suggestions: {
+          version: '0.4.0',
+          byNode: {
+            [staleNodeId]: [{
+              nodeId: staleNodeId,
+              tacticKey: 'old',
+              score: 0.1,
+              sampleSize: 2,
+              successRate: 0.5,
+              sourceCategory: 'OTHER',
+              generatedAt: 100
+            }],
+            [freshNodeId]: [{
+              nodeId: freshNodeId,
+              tacticKey: 'simp',
+              score: 0.9,
+              sampleSize: 5,
+              successRate: 0.8,
+              sourceCategory: 'TACTIC_FAILED',
+              generatedAt: 200
+            }]
+          },
+          updatedAt: 200
+        }
+      },
+      computed: {},
+      system: {
+        status: 'idle',
+        lastError: null,
+        errors: [],
+        pendingRequirements: [],
+        currentAction: null
+      },
+      meta: {
+        version: 1,
+        timestamp: 10,
+        randomSeed: 'seed',
+        schemaHash: 'schema-hash'
+      }
+    } as any)
+
+    await storeA.store({
+      worldId: nextId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-2',
+      createdAt: 11,
+      createdBy: 'p_1' as any
+    } as any, {
+      fromWorld: genesisId,
+      toWorld: nextId,
+      patches: [{
+        op: 'set',
+        path: 'data.suggestions',
+        value: {
+          version: '0.4.0',
+          byNode: {
+            [freshNodeId]: [{
+              nodeId: freshNodeId,
+              tacticKey: 'simp',
+              score: 0.9,
+              sampleSize: 5,
+              successRate: 0.8,
+              sourceCategory: 'TACTIC_FAILED',
+              generatedAt: 200
+            }]
+          },
+          updatedAt: 201
+        }
+      }],
+      createdAt: 11
+    } as any)
+
+    await delay(25)
+
+    const restored = await storeA.restore(nextId)
+    const suggestions = (restored.data as any).suggestions
+
+    expect(Object.keys(suggestions.byNode)).toEqual([freshNodeId])
+    expect(suggestions.byNode[staleNodeId]).toBeUndefined()
+    expect(suggestions.byNode[freshNodeId][0].tacticKey).toBe('simp')
+    expect(suggestions.updatedAt).toBe(201)
+  })
 })

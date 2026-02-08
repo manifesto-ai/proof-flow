@@ -74,6 +74,25 @@ type GoalCoverageReadiness = {
   lastSyncedAt: number | null
 }
 
+type GoalCoverageAlert = (
+  | 'NO_HINTS'
+  | 'STABLE_HINTS_ZERO'
+  | 'FALLBACK_DOMINANT'
+  | 'DECLARATION_FALLBACK_DOMINANT'
+  | 'LEAN_CLIENT_NOT_READY'
+)
+
+type GoalSourceKpi = {
+  totalHints: number
+  stableHints: number
+  fallbackHints: number
+  stableRatio: number
+  fallbackRatio: number
+  declarationFallbackRatio: number
+  fallbackDominant: boolean
+  alerts: GoalCoverageAlert[]
+}
+
 const goalSourceStatsByFileUri = new Map<string, GoalSourceStats>()
 
 type GoalCoverageSnapshot = {
@@ -83,6 +102,7 @@ type GoalCoverageSnapshot = {
   ratio: number
   percent: string
   sources: GoalSourceStats | null
+  sourceKpi: GoalSourceKpi | null
   readiness: GoalCoverageReadiness
 }
 
@@ -107,6 +127,19 @@ const LEAN_PROVIDER_RETRY_COOLDOWN_MS = 2000
 const GOAL_READINESS_TIMEOUT_MS = 12000
 const GOAL_READINESS_POLL_MS = 200
 const GOAL_PROBE_FAILURE_LIMIT = 12
+const GOAL_FALLBACK_STABILIZE_MS = 3500
+const GOAL_POSITION_SCAN_LIMIT = 220
+const GOAL_POSITION_LIMIT = 14
+const STABLE_REQUEST_MAX_ATTEMPTS = 4
+const STABLE_REQUEST_RETRY_BASE_MS = 120
+const GOAL_ALERT_MIN_HINTS = 3
+const GOAL_FALLBACK_DOMINANCE_THRESHOLD = 0.7
+const GOAL_DECLARATION_DOMINANCE_THRESHOLD = 0.8
+const LEAN_GOAL_COMMAND_SAFE_PATTERNS = [
+  /^lean4\.(?:infoview\.)?(?:api\.)?getGoals$/i,
+  /^lean4\.goalState$/i,
+  /^lean4\.goals$/i
+] as const
 
 const toVscodeRange = (range: Range): vscode.Range => {
   const startLine = Math.max(range.startLine - 1, 0)
@@ -226,6 +259,12 @@ const toErrorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
 )
 
+const toPercentText = (ratio: number): string => `${(ratio * 100).toFixed(1)}%`
+
+const isSafeLeanGoalCommand = (command: string): boolean => (
+  LEAN_GOAL_COMMAND_SAFE_PATTERNS.some((pattern) => pattern.test(command))
+)
+
 const toProbeCode = (error: unknown): string => {
   const record = asRecord(error)
   const code = record?.code
@@ -247,6 +286,43 @@ const toProbeCode = (error: unknown): string => {
     return 'NO_ACTIVE_EDITOR'
   }
   return 'UNKNOWN'
+}
+
+const isRetriableStableProbeError = (error: unknown): boolean => {
+  const code = toProbeCode(error)
+  if (code === 'NOT_READY' || code === 'TIMEOUT') {
+    return true
+  }
+
+  const message = toErrorMessage(error).toLowerCase()
+  return (
+    message.includes('no connection to lean')
+    || message.includes('not initialized')
+    || message.includes('not ready')
+    || message.includes('connection closed')
+    || message.includes('request cancelled')
+  )
+}
+
+const stableRetryDelayMs = (attempt: number): number => (
+  STABLE_REQUEST_RETRY_BASE_MS * Math.max(1, attempt * attempt)
+)
+
+const describeStablePayload = (payload: unknown): string => {
+  if (payload === null || payload === undefined) {
+    return 'nullish'
+  }
+  if (Array.isArray(payload)) {
+    return `array(len=${payload.length})`
+  }
+
+  const record = asRecord(payload)
+  if (record) {
+    const keys = Object.keys(record).sort().slice(0, 8)
+    return `object(keys=${keys.join(',') || '(none)'})`
+  }
+
+  return typeof payload
 }
 
 const pushProbeFailure = (
@@ -754,13 +830,48 @@ type GoalPosition = {
   character: number
 }
 
-const buildGoalPositions = (
+const collectHeuristicGoalPositions = (
+  document: vscode.TextDocument,
+  push: (line: number, character: number) => void
+): void => {
+  if (typeof document.lineCount !== 'number' || typeof document.lineAt !== 'function') {
+    return
+  }
+
+  const maxLines = Math.min(document.lineCount, GOAL_POSITION_SCAN_LIMIT)
+  for (let line = 0; line < maxLines; line += 1) {
+    const text = document.lineAt(line).text
+    const trimmed = text.trim()
+    if (trimmed.length === 0) {
+      continue
+    }
+
+    const byIndex = text.indexOf(':= by')
+    if (byIndex >= 0) {
+      push(line, Math.max(0, byIndex + 3))
+      continue
+    }
+
+    const startsProofBlock = /^\s*by\b/.test(trimmed)
+    const likelyGoalLine = /^\s*(have|show|suffices|let|exact|simp|rw|calc|case|apply|refine|constructor|cases|induction|aesop|linarith|omega|tauto|rfl|trivial|sorry)\b/.test(trimmed)
+    if (startsProofBlock || likelyGoalLine) {
+      const firstChar = Math.max(0, text.search(/\S/))
+      push(line, firstChar)
+    }
+  }
+}
+
+const buildGoalPositions = async (
   fileUri: string,
   diagnostics: readonly vscode.Diagnostic[]
-): GoalPosition[] => {
+): Promise<GoalPosition[]> => {
   const positions: GoalPosition[] = []
   const seen = new Set<string>()
   const push = (line: number, character: number) => {
+    if (positions.length >= GOAL_POSITION_LIMIT) {
+      return
+    }
+
     const safeLine = Math.max(0, Math.floor(line))
     const safeCharacter = Math.max(0, Math.floor(character))
     const key = `${safeLine}:${safeCharacter}`
@@ -778,6 +889,16 @@ const buildGoalPositions = (
   const activeEditor = vscode.window.activeTextEditor
   if (activeEditor && activeEditor.document.uri.toString() === fileUri) {
     push(activeEditor.selection.active.line, activeEditor.selection.active.character)
+    collectHeuristicGoalPositions(activeEditor.document, push)
+  }
+  else {
+    try {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(fileUri))
+      collectHeuristicGoalPositions(document, push)
+    }
+    catch {
+      // Keep fallback behavior.
+    }
   }
 
   if (positions.length === 0) {
@@ -801,6 +922,52 @@ const toRangeAroundPosition = (position: GoalPosition): Range => ({
   endLine: position.line + 1,
   endCol: position.character + 1
 })
+
+const requestStableGoalWithRetry = async (
+  leanClient: LeanClientLike,
+  method: '$/lean/plainGoal' | '$/lean/plainTermGoal',
+  params: unknown
+): Promise<{
+  ok: boolean
+  payload: unknown
+  error: unknown | null
+  attempts: number
+}> => {
+  let lastError: unknown | null = null
+
+  for (let attempt = 1; attempt <= STABLE_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const payload = await leanClient.sendRequest(method, params)
+      return {
+        ok: true,
+        payload,
+        error: null,
+        attempts: attempt
+      }
+    }
+    catch (error) {
+      lastError = error
+      const shouldRetry = isRetriableStableProbeError(error) && attempt < STABLE_REQUEST_MAX_ATTEMPTS
+      if (!shouldRetry) {
+        return {
+          ok: false,
+          payload: null,
+          error,
+          attempts: attempt
+        }
+      }
+
+      await sleep(stableRetryDelayMs(attempt))
+    }
+  }
+
+  return {
+    ok: false,
+    payload: null,
+    error: lastError,
+    attempts: STABLE_REQUEST_MAX_ATTEMPTS
+  }
+}
 
 const normalizePlainGoalResponse = (
   payload: unknown,
@@ -878,17 +1045,20 @@ const loadGoalHintsFromLeanStableRequests = async (
   const hints: LeanGoalHint[] = []
   const methodsUsed: string[] = []
   const failures: GoalProbeFailure[] = []
-  const positions = buildGoalPositions(fileUri, diagnostics)
-  const maxPositions = 8
+  const positions = await buildGoalPositions(fileUri, diagnostics)
 
-  for (const position of positions.slice(0, maxPositions)) {
+  for (const position of positions) {
     const tdpp = toTdpp(fileUri, position)
     const fallbackRange = toRangeAroundPosition(position)
 
-    try {
-      const plainGoalPayload = await leanClient.sendRequest('$/lean/plainGoal', tdpp)
+    const plainGoalProbe = await requestStableGoalWithRetry(
+      leanClient,
+      '$/lean/plainGoal',
+      tdpp
+    )
+    if (plainGoalProbe.ok) {
       const plainGoalHints = normalizePlainGoalResponse(
-        plainGoalPayload,
+        plainGoalProbe.payload,
         fallbackRange,
         'stable:$/lean/plainGoal'
       )
@@ -898,20 +1068,32 @@ const loadGoalHintsFromLeanStableRequests = async (
           methodsUsed.push(LEAN_STABLE_GOAL_METHODS[0])
         }
       }
+      else {
+        pushProbeFailure(failures, {
+          source: 'stable',
+          method: '$/lean/plainGoal',
+          code: 'EMPTY_RESPONSE',
+          message: `${describeStablePayload(plainGoalProbe.payload)} (attempts=${plainGoalProbe.attempts})`
+        })
+      }
     }
-    catch (error) {
+    else if (plainGoalProbe.error) {
       pushProbeFailure(failures, {
         source: 'stable',
         method: '$/lean/plainGoal',
-        code: toProbeCode(error),
-        message: toErrorMessage(error)
+        code: toProbeCode(plainGoalProbe.error),
+        message: `${toErrorMessage(plainGoalProbe.error)} (attempts=${plainGoalProbe.attempts})`
       })
     }
 
-    try {
-      const termGoalPayload = await leanClient.sendRequest('$/lean/plainTermGoal', tdpp)
+    const termGoalProbe = await requestStableGoalWithRetry(
+      leanClient,
+      '$/lean/plainTermGoal',
+      tdpp
+    )
+    if (termGoalProbe.ok) {
       const termGoalHints = normalizePlainTermGoalResponse(
-        termGoalPayload,
+        termGoalProbe.payload,
         fallbackRange,
         'stable:$/lean/plainTermGoal'
       )
@@ -921,13 +1103,21 @@ const loadGoalHintsFromLeanStableRequests = async (
           methodsUsed.push(LEAN_STABLE_GOAL_METHODS[1])
         }
       }
+      else {
+        pushProbeFailure(failures, {
+          source: 'stable',
+          method: '$/lean/plainTermGoal',
+          code: 'EMPTY_RESPONSE',
+          message: `${describeStablePayload(termGoalProbe.payload)} (attempts=${termGoalProbe.attempts})`
+        })
+      }
     }
-    catch (error) {
+    else if (termGoalProbe.error) {
       pushProbeFailure(failures, {
         source: 'stable',
         method: '$/lean/plainTermGoal',
-        code: toProbeCode(error),
-        message: toErrorMessage(error)
+        code: toProbeCode(termGoalProbe.error),
+        message: `${toErrorMessage(termGoalProbe.error)} (attempts=${termGoalProbe.attempts})`
       })
     }
 
@@ -1099,15 +1289,14 @@ const discoverLeanGoalCommands = async (): Promise<string[]> => {
 
   try {
     const all = await commandsApi.getCommands(true)
-    const discovered = all.filter((command) => (
-      command.startsWith('lean4.')
-      && /(goal|infoview)/i.test(command)
-      && /(get|fetch|request|state|goals)/i.test(command)
-    ))
+    const discovered = all.filter((command) => isSafeLeanGoalCommand(command))
 
     const merged = [...LEAN_GOAL_COMMAND_CANDIDATES, ...discovered]
     const unique: string[] = []
     for (const command of merged) {
+      if (!isSafeLeanGoalCommand(command)) {
+        continue
+      }
       if (!all.includes(command)) {
         continue
       }
@@ -1126,6 +1315,7 @@ const discoverLeanGoalCommands = async (): Promise<string[]> => {
 }
 
 const buildGoalCommandArgs = (
+  command: string,
   fileUri: string,
   diagnostics: readonly vscode.Diagnostic[]
 ): unknown[][] => {
@@ -1133,16 +1323,26 @@ const buildGoalCommandArgs = (
   const first = diagnostics[0]
   const line = first?.range.start.line ?? 0
   const character = first?.range.start.character ?? 0
+  const tdpp = {
+    textDocument: { uri: fileUri },
+    position: { line: line + 1, character }
+  }
+
+  if (/getGoals$/i.test(command)) {
+    return [
+      [tdpp],
+      [{ uri: fileUri, position: { line: line + 1, character } }],
+      [uri, new vscode.Position(line, character)],
+      [{ uri: fileUri }],
+      [fileUri],
+      []
+    ]
+  }
 
   return [
-    [{ fileUri }],
+    [tdpp],
     [{ uri: fileUri }],
     [fileUri],
-    [uri],
-    [{ fileUri, position: { line: line + 1, column: character } }],
-    [{ uri: fileUri, position: { line: line + 1, column: character } }],
-    [uri, new vscode.Position(line, character)],
-    [uri, { line, character }],
     []
   ]
 }
@@ -1173,10 +1373,10 @@ const loadGoalHintsFromLeanCommands = async (
   const hints: LeanGoalHint[] = []
   const commandsUsed: string[] = []
   const failures: GoalProbeFailure[] = []
-  const argsCandidates = buildGoalCommandArgs(fileUri, diagnostics)
-  const maxCommands = 4
+  const maxCommands = 3
 
   for (const command of commands.slice(0, maxCommands)) {
+    const argsCandidates = buildGoalCommandArgs(command, fileUri, diagnostics)
     let commandMatched = false
     for (const args of argsCandidates) {
       try {
@@ -1304,8 +1504,18 @@ const proofFlowEffects: Effects = createProofFlowEffects({
       const declarationHints = contextHints.filter((hint) => hint.source === 'declaration')
       const diagnosticHints = contextHints.filter((hint) => hint.source !== 'declaration')
       const hoverResult = await extractGoalHintsFromHoverProvider(uri, diagnostics)
-      const apiResult = await loadGoalHintsFromLeanExtensionApi(fileUri, diagnostics)
-      const commandResult = await loadGoalHintsFromLeanCommands(fileUri, diagnostics)
+      const shouldProbeApi = stableResult.hints.length === 0
+      const apiResult = shouldProbeApi
+        ? await loadGoalHintsFromLeanExtensionApi(fileUri, diagnostics)
+        : { hints: [], methodsUsed: [], failures: [] }
+      const shouldProbeCommands = (
+        stableResult.hints.length === 0
+        && hoverResult.hints.length === 0
+        && apiResult.hints.length === 0
+      )
+      const commandResult = shouldProbeCommands
+        ? await loadGoalHintsFromLeanCommands(fileUri, diagnostics)
+        : { hints: [], commandsUsed: [], failures: [] }
       const probeFailures: GoalProbeFailure[] = [
         ...stableResult.failures,
         ...hoverResult.failures,
@@ -1552,6 +1762,63 @@ const emptyGoalSourceStats = (): GoalSourceStats => ({
   leanClientReady: false
 })
 
+const buildGoalSourceKpi = (stats: GoalSourceStats | null): GoalSourceKpi | null => {
+  if (!stats) {
+    return null
+  }
+
+  const stableHints = Math.max(0, stats.stableHints)
+  const fallbackHints = Math.max(
+    0,
+    stats.declarationHints
+      + stats.diagnosticHints
+      + stats.hoverHints
+      + stats.apiHints
+      + stats.commandHints
+  )
+  const totalHints = stableHints + fallbackHints
+  const stableRatio = totalHints > 0 ? stableHints / totalHints : 0
+  const fallbackRatio = totalHints > 0 ? fallbackHints / totalHints : 0
+  const declarationFallbackRatio = fallbackHints > 0
+    ? Math.max(0, stats.declarationHints) / fallbackHints
+    : 0
+  const fallbackDominant = (
+    fallbackHints >= GOAL_ALERT_MIN_HINTS
+    && fallbackRatio >= GOAL_FALLBACK_DOMINANCE_THRESHOLD
+  )
+
+  const alerts: GoalCoverageAlert[] = []
+  if (totalHints === 0) {
+    alerts.push('NO_HINTS')
+  }
+  if (fallbackHints > 0 && stableHints === 0) {
+    alerts.push('STABLE_HINTS_ZERO')
+  }
+  if (fallbackDominant) {
+    alerts.push('FALLBACK_DOMINANT')
+  }
+  if (
+    stats.declarationHints >= GOAL_ALERT_MIN_HINTS
+    && declarationFallbackRatio >= GOAL_DECLARATION_DOMINANCE_THRESHOLD
+  ) {
+    alerts.push('DECLARATION_FALLBACK_DOMINANT')
+  }
+  if (!stats.leanClientReady) {
+    alerts.push('LEAN_CLIENT_NOT_READY')
+  }
+
+  return {
+    totalHints,
+    stableHints,
+    fallbackHints,
+    stableRatio,
+    fallbackRatio,
+    declarationFallbackRatio,
+    fallbackDominant,
+    alerts
+  }
+}
+
 const appendRuntimeProbeFailure = (
   fileUri: string,
   method: string,
@@ -1615,6 +1882,18 @@ const waitForGoalReadiness = async (fileUri: string): Promise<GoalCoverageReadin
     }
 
     const stats = goalSourceStatsByFileUri.get(fileUri)
+    const stableHintCount = Math.max(0, stats?.stableHints ?? 0)
+    const fallbackHintCount = Math.max(
+      0,
+      (stats?.declarationHints ?? 0)
+        + (stats?.diagnosticHints ?? 0)
+        + (stats?.hoverHints ?? 0)
+        + (stats?.apiHints ?? 0)
+        + (stats?.commandHints ?? 0)
+    )
+    const elapsedMs = Date.now() - startedAt
+    const fallbackOnlyHints = stableHintCount === 0 && fallbackHintCount > 0
+    const waitingForStableWindow = fallbackOnlyHints && elapsedMs < GOAL_FALLBACK_STABILIZE_MS
     const stableProbeObserved = (
       typeof stats?.stableHints === 'number'
       || (stats?.probeFailures.some((failure) => failure.source === 'stable') ?? false)
@@ -1623,7 +1902,16 @@ const waitForGoalReadiness = async (fileUri: string): Promise<GoalCoverageReadin
       failure.source === 'stable'
       && /no connection to lean/i.test(failure.message)
     )) ?? false
-    if (leanClientReady && stableProbeObserved && !noConnectionFailure) {
+    const allowFallbackOnlyReady = (
+      fallbackOnlyHints
+      && elapsedMs >= GOAL_FALLBACK_STABILIZE_MS
+    )
+    if (
+      leanClientReady
+      && stableProbeObserved
+      && (!noConnectionFailure || allowFallbackOnlyReady)
+      && !waitingForStableWindow
+    ) {
       transportReady = true
     }
 
@@ -1660,12 +1948,21 @@ const reportGoalCoverage = async (): Promise<void> => {
   }
 
   const stats = snapshot.sources
+  const sourceKpi = snapshot.sourceKpi
   const sourceSummary = stats
     ? ` | hints s/decl/d/h/a/c=${stats.stableHints}/${stats.declarationHints}/${stats.diagnosticHints}/${stats.hoverHints}/${stats.apiHints}/${stats.commandHints}`
       + (stats.stableMethodsUsed.length > 0 ? ` | stable=${stats.stableMethodsUsed.join(',')}` : '')
       + (stats.apiMethodsUsed.length > 0 ? ` | api=${stats.apiMethodsUsed.join(',')}` : '')
       + (stats.commandsUsed.length > 0 ? ` | cmds=${stats.commandsUsed.join(',')}` : '')
       + ` | failures=${stats.probeFailures.length}`
+      + (
+        sourceKpi
+          ? ` | stableRatio=${toPercentText(sourceKpi.stableRatio)}`
+            + ` | fallbackRatio=${toPercentText(sourceKpi.fallbackRatio)}`
+            + ` | declShare=${toPercentText(sourceKpi.declarationFallbackRatio)}`
+            + (sourceKpi.alerts.length > 0 ? ` | alerts=${sourceKpi.alerts.join(',')}` : '')
+          : ''
+      )
     : ''
   const message = `[ProofFlow] Goal coverage ${snapshot.withGoal}/${snapshot.totalNodes} (${snapshot.percent}%)`
     + ` | readiness=${snapshot.readiness.status} (${snapshot.readiness.waitedMs}ms)${sourceSummary}`
@@ -1703,6 +2000,7 @@ const getGoalCoverageSnapshot = async (): Promise<GoalCoverageSnapshot | null> =
   const withGoal = nodes.filter((node) => typeof node.goal === 'string' && node.goal.trim().length > 0).length
   const ratio = totalNodes > 0 ? withGoal / totalNodes : 0
   const percent = (ratio * 100).toFixed(1)
+  const sources = goalSourceStatsByFileUri.get(activeFileUri) ?? emptyGoalSourceStats()
 
   return {
     fileUri: activeFileUri,
@@ -1710,7 +2008,8 @@ const getGoalCoverageSnapshot = async (): Promise<GoalCoverageSnapshot | null> =
     withGoal,
     ratio,
     percent,
-    sources: goalSourceStatsByFileUri.get(activeFileUri) ?? emptyGoalSourceStats(),
+    sources,
+    sourceKpi: buildGoalSourceKpi(sources),
     readiness
   }
 }

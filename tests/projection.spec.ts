@@ -280,6 +280,9 @@ describe('Projection selector', () => {
       'exact',
       'aesop'
     ])
+    expect(projection.selectedNodeSuggestions[0]?.reason).toContain('category:OTHER')
+    expect(projection.selectedNodeSuggestions[0]?.reason).toContain('sample:5')
+    expect(projection.selectedNodeSuggestions[0]?.reason).toContain('node-local:')
     expect(projection.startHereQueue).toHaveLength(1)
     expect(projection.startHereQueue[0]).toMatchObject({
       nodeId: 'child',

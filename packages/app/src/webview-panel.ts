@@ -540,7 +540,8 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
                 + category
                 + ' · score ' + Number(entry.score || 0).toFixed(2)
                 + ' · sample ' + (entry.sampleSize || 0)
-                + ' · winrate ' + Number(entry.successRate || 0).toFixed(2);
+                + ' · winrate ' + Number(entry.successRate || 0).toFixed(2)
+                + (entry.reason ? ' · ' + entry.reason : '');
               return '<button class="btn" data-suggestion-key="' + encodedTacticKey + '">'
                 + escapeHtml(label)
                 + '</button>';

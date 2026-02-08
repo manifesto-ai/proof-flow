@@ -366,6 +366,34 @@ describe('Host effects', () => {
     expect(patterns.entries[patternKey].score).toBe(0)
   })
 
+  it('attempt.record filters low-quality tactic keys from patterns', async () => {
+    const effect = createAttemptRecordEffect({
+      now: () => 1700000000005
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'auto:lemma',
+      tacticKey: 'auto:lemma',
+      result: 'error',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: 'auto generated marker',
+      durationMs: 5
+    }, {
+      snapshot: { data: {} }
+    })
+
+    const historyPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'history')
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+
+    expect(historyPatch).toBeDefined()
+    expect(patternsPatch).toBeUndefined()
+
+    const history = (historyPatch as { value: any }).value
+    expect(history.files[fileUri].nodes.child.totalAttempts).toBe(1)
+  })
+
   it('attempt.record appends attempts and resets streak on success', async () => {
     const effect = createAttemptRecordEffect({
       now: () => 1700000000010
@@ -731,5 +759,236 @@ describe('Host effects', () => {
     const child = suggestions.byNode.child as Array<{ tacticKey: string; sampleSize: number }>
     expect(child.map((entry) => entry.tacticKey)).toEqual(['exact', 'aesop'])
     expect(child.every((entry) => entry.sampleSize >= 3)).toBe(true)
+  })
+
+  it('attempt.suggest boosts node-local signal when pattern scores are close', async () => {
+    const effect = createAttemptSuggestEffect({
+      now: () => 1000,
+      minSampleSize: 3,
+      limit: 2
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: {
+          files: {
+            [fileUri]: {
+              dag: {
+                nodes: {
+                  child: {
+                    status: {
+                      errorCategory: 'TACTIC_FAILED'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          history: {
+            files: {
+              [fileUri]: {
+                nodes: {
+                  child: {
+                    attempts: {
+                      a1: { timestamp: 950, tacticKey: 'simp', result: 'success', contextErrorCategory: 'TACTIC_FAILED' },
+                      a2: { timestamp: 951, tacticKey: 'simp', result: 'success', contextErrorCategory: 'TACTIC_FAILED' },
+                      a3: { timestamp: 952, tacticKey: 'simp', result: 'success', contextErrorCategory: 'TACTIC_FAILED' },
+                      a4: { timestamp: 953, tacticKey: 'simp', result: 'success', contextErrorCategory: 'TACTIC_FAILED' },
+                      b1: { timestamp: 954, tacticKey: 'exact', result: 'error', contextErrorCategory: 'TACTIC_FAILED' },
+                      b2: { timestamp: 955, tacticKey: 'exact', result: 'error', contextErrorCategory: 'TACTIC_FAILED' },
+                      b3: { timestamp: 956, tacticKey: 'exact', result: 'error', contextErrorCategory: 'TACTIC_FAILED' },
+                      b4: { timestamp: 957, tacticKey: 'exact', result: 'error', contextErrorCategory: 'TACTIC_FAILED' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          patterns: {
+            entries: {
+              'TACTIC_FAILED:simp': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'simp',
+                successCount: 8,
+                failureCount: 2,
+                score: 0.8,
+                lastUpdated: 900
+              },
+              'TACTIC_FAILED:exact': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'exact',
+                successCount: 9,
+                failureCount: 1,
+                score: 0.9,
+                lastUpdated: 900
+              }
+            }
+          },
+          suggestions: {
+            version: '0.4.0',
+            byNode: {},
+            updatedAt: null
+          }
+        }
+      }
+    })
+
+    const suggestions = (patches[0] as { value: any }).value
+    const child = suggestions.byNode.child as Array<{ tacticKey: string }>
+    expect(child.map((entry) => entry.tacticKey)).toEqual(['simp', 'exact'])
+  })
+
+  it('attempt.suggest prefers fresher patterns when other factors tie', async () => {
+    const now = 1000 * 60 * 60 * 24 * 7
+    const effect = createAttemptSuggestEffect({
+      now: () => now,
+      minSampleSize: 3,
+      limit: 2
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: {
+          files: {
+            [fileUri]: {
+              dag: {
+                nodes: {
+                  child: {
+                    status: {
+                      errorCategory: 'TACTIC_FAILED'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          history: {
+            files: {}
+          },
+          patterns: {
+            entries: {
+              'TACTIC_FAILED:simp': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'simp',
+                successCount: 4,
+                failureCount: 1,
+                score: 0.8,
+                lastUpdated: now - 1000
+              },
+              'TACTIC_FAILED:exact': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'exact',
+                successCount: 4,
+                failureCount: 1,
+                score: 0.8,
+                lastUpdated: 0
+              }
+            }
+          },
+          suggestions: {
+            version: '0.4.0',
+            byNode: {},
+            updatedAt: null
+          }
+        }
+      }
+    })
+
+    const suggestions = (patches[0] as { value: any }).value
+    const child = suggestions.byNode.child as Array<{ tacticKey: string }>
+    expect(child.map((entry) => entry.tacticKey)).toEqual(['simp', 'exact'])
+  })
+
+  it('attempt.suggest prunes stale suggestions and caps tracked nodes', async () => {
+    const now = 1_700_000_000_000
+    const effect = createAttemptSuggestEffect({
+      now: () => now,
+      minSampleSize: 1,
+      limit: 2,
+      ttlMs: 500,
+      maxTrackedNodes: 2
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: {
+          files: {
+            [fileUri]: {
+              dag: {
+                nodes: {
+                  child: {
+                    status: {
+                      errorCategory: 'TACTIC_FAILED'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          history: { files: {} },
+          patterns: {
+            entries: {
+              'TACTIC_FAILED:simp': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'simp',
+                successCount: 4,
+                failureCount: 1,
+                score: 0.8,
+                lastUpdated: now
+              }
+            }
+          },
+          suggestions: {
+            version: '0.4.0',
+            byNode: {
+              staleNode: [{
+                nodeId: 'staleNode',
+                tacticKey: 'old',
+                score: 0.9,
+                sampleSize: 5,
+                successRate: 0.9,
+                sourceCategory: 'OTHER',
+                generatedAt: now - 10_000
+              }],
+              recentNode: [{
+                nodeId: 'recentNode',
+                tacticKey: 'recent',
+                score: 0.7,
+                sampleSize: 3,
+                successRate: 0.7,
+                sourceCategory: 'OTHER',
+                generatedAt: now - 100
+              }],
+              anotherRecentNode: [{
+                nodeId: 'anotherRecentNode',
+                tacticKey: 'another',
+                score: 0.6,
+                sampleSize: 3,
+                successRate: 0.6,
+                sourceCategory: 'OTHER',
+                generatedAt: now - 120
+              }]
+            },
+            updatedAt: now - 100
+          }
+        }
+      }
+    })
+
+    const suggestions = (patches[0] as { value: any }).value
+    const byNode = suggestions.byNode as Record<string, Array<{ tacticKey: string }>>
+    expect(Object.keys(byNode)).toEqual(['child', 'recentNode'])
+    expect(byNode.child?.length).toBeLessThanOrEqual(2)
+    expect(byNode.child?.[0]?.tacticKey).toBe('simp')
+    expect(byNode.staleNode).toBeUndefined()
   })
 })
