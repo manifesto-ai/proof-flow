@@ -21,6 +21,9 @@
 - ✅ Extension attempt trigger baseline (save/diagnostics → deduped `attempt_record`)
 - ✅ Projection read model v0.2 (`attemptOverview`, `selectedNodeHistory`, `patternInsights`)
 - ✅ Attempt world replay/restore verification (`tests/attempt-replay.spec.ts`)
+- ✅ Projection read model v0.3 (`nodeHeatmap`, qualified pattern ranking, dashboard)
+- ✅ Pattern reset UX wiring (WebView button + command palette `proof-flow.patternsReset`)
+- ✅ WorldStore dynamic-key replay hardening (`history.files.*`, `patterns.entries.*`)
 
 ## Checkpoints
 
@@ -72,3 +75,11 @@
 - [x] Extension trigger wiring baseline (save/diagnostics 후 active node 상태를 attempt로 기록, fingerprint dedupe)
 - [x] Projection read model: node attempt summary / pattern insight selector
 - [x] E2E scenario: attempt 생성 후 world replay/복원 검증
+
+### 8. v0.3 Projection/Replay Hardening
+- [x] Projection 모델 확장: `attemptCount/heatLevel`, `nodeHeatmap`, dashboard 집계
+- [x] Qualified pattern 기준(sample >= 3) + selected category 우선 인사이트 노출
+- [x] WebView resetPatterns 메시지 처리 + extension 액션 연결
+- [x] Command palette reset 경로 추가 (`proof-flow.patternsReset`)
+- [x] Extension E2E: reset command/panel action -> `patterns_reset` 디스패치 검증
+- [x] WorldStore 회귀 테스트: 점(`.`) 포함 dynamic key 경로(`history`, `patterns`) 복원 무결성 검증

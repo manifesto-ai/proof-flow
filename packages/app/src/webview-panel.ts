@@ -9,6 +9,7 @@ export type ProjectionPanelActions = {
   onSetLayout: (layout: LayoutDirection) => Promise<void>
   onSetZoom: (zoom: number) => Promise<void>
   onToggleCollapse: () => Promise<void>
+  onResetPatterns: () => Promise<void>
 }
 
 type WebviewMessage =
@@ -17,6 +18,7 @@ type WebviewMessage =
   | { type: 'setLayout'; payload?: { layout?: string } }
   | { type: 'setZoom'; payload?: { zoom?: number } }
   | { type: 'toggleCollapse' }
+  | { type: 'resetPatterns' }
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -41,6 +43,22 @@ const initialProjectionState = (): ProjectionState => ({
     totalAttempts: 0,
     fileAttempts: 0,
     selectedNodeAttempts: 0
+  },
+  nodeHeatmap: {},
+  dashboard: {
+    totalPatterns: 0,
+    qualifiedPatterns: 0,
+    errorCategoryTotals: {
+      TYPE_MISMATCH: 0,
+      UNKNOWN_IDENTIFIER: 0,
+      TACTIC_FAILED: 0,
+      UNSOLVED_GOALS: 0,
+      TIMEOUT: 0,
+      KERNEL_ERROR: 0,
+      SYNTAX_ERROR: 0,
+      OTHER: 0
+    },
+    topNodeAttempts: []
   },
   nodes: [],
   selectedNode: null,
@@ -164,6 +182,10 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     .node:hover { border-color: var(--focus); }
     .node.selected { border-color: #58a6ff; background: #172335; }
     .node.cursor { box-shadow: 0 0 0 1px #ffbf47 inset; }
+    .node.heat-none { border-left: 3px solid #2a3441; }
+    .node.heat-low { border-left: 3px solid #2f6f4f; }
+    .node.heat-medium { border-left: 3px solid #8f6d2e; }
+    .node.heat-high { border-left: 3px solid #9b3f4f; }
 
     .status { font-weight: 700; }
     .status.resolved { color: var(--ok); }
@@ -192,6 +214,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     <div class="row" style="align-items:center;">
       <button class="btn" id="toggleLayout">Layout</button>
       <button class="btn" id="toggleCollapse">Collapse Resolved</button>
+      <button class="btn" id="resetPatterns">Reset Patterns</button>
       <button class="btn" id="togglePanel">Hide Panel</button>
       <label class="meta" for="zoom">Zoom</label>
       <input id="zoom" type="range" min="0.1" max="5" step="0.1" value="1" />
@@ -342,6 +365,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     const updateSummary = () => {
       const metrics = state.summaryMetrics;
       const attempts = state.attemptOverview || { totalAttempts: 0, fileAttempts: 0, selectedNodeAttempts: 0 };
+      const dashboard = state.dashboard || { totalPatterns: 0, qualifiedPatterns: 0 };
       const total = metrics ? metrics.totalNodes : 0;
       summaryEl.innerHTML = [
         '<span class="chip">Total: ' + total + '</span>',
@@ -353,6 +377,9 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         '<span class="chip">Depth: ' + (metrics ? metrics.maxDepth : 0) + '</span>',
         '<span class="chip">Attempts(total/file/node): '
           + attempts.totalAttempts + '/' + attempts.fileAttempts + '/' + attempts.selectedNodeAttempts
+          + '</span>',
+        '<span class="chip">Patterns(qualified/total): '
+          + dashboard.qualifiedPatterns + '/' + dashboard.totalPatterns
           + '</span>'
       ].join('');
 
@@ -383,12 +410,14 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         .map((node) => {
           const selected = state.ui.selectedNodeId === node.id ? 'selected' : '';
           const cursor = state.ui.cursorNodeId === node.id ? 'cursor' : '';
+          const heat = node.heatLevel || 'none';
           const label = escapeHtml(node.label || node.id);
 
           return ''
-            + '<article class="node ' + selected + ' ' + cursor + '" data-node-id="' + escapeHtml(node.id) + '">'
+            + '<article class="node heat-' + heat + ' ' + selected + ' ' + cursor + '" data-node-id="' + escapeHtml(node.id) + '">'
             + '  <div><strong>' + label + '</strong></div>'
-            + '  <div class="meta">' + escapeHtml(node.kind) + ' · line ' + node.startLine + '-' + node.endLine + '</div>'
+            + '  <div class="meta">' + escapeHtml(node.kind) + ' · line ' + node.startLine + '-' + node.endLine
+            + ' · attempts ' + (node.attemptCount || 0) + '</div>'
             + '  <div class="status ' + statusClass(node.statusKind) + '">' + escapeHtml(node.statusKind) + '</div>'
             + '</article>';
         })
@@ -440,11 +469,34 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
                 + ' @ ' + entry.errorCategory
                 + ' => success ' + entry.successCount
                 + ', fail ' + entry.failureCount
+                + ', sample ' + entry.sampleSize
+                + ', winrate ' + Number(entry.successRate || 0).toFixed(2)
                 + ', score ' + Number(entry.score || 0).toFixed(2);
             })
             .join('\\n')
           + '</pre>'
-        : '<div class="meta">No pattern insights yet.</div>';
+        : '<div class="meta">No qualified pattern insights (sample >= 3).</div>';
+
+      const dashboard = state.dashboard || {
+        totalPatterns: 0,
+        qualifiedPatterns: 0,
+        errorCategoryTotals: {},
+        topNodeAttempts: []
+      };
+      const categoryRows = Object.entries(dashboard.errorCategoryTotals || {})
+        .filter(([, value]) => typeof value === 'number' && value > 0)
+        .map(([key, value]) => '- ' + key + ': ' + value)
+        .slice(0, 5);
+      const topNodeRows = Array.isArray(dashboard.topNodeAttempts)
+        ? dashboard.topNodeAttempts
+          .slice(0, 3)
+          .map((entry) => '- ' + entry.nodeId + ' -> ' + entry.totalAttempts + ' (streak ' + entry.currentStreak + ')')
+        : [];
+      const dashboardBlock = '<pre class="meta">Dashboard:\\n'
+        + '- patterns: ' + dashboard.totalPatterns + ' (qualified ' + dashboard.qualifiedPatterns + ')\\n'
+        + (categoryRows.length > 0 ? categoryRows.join('\\n') + '\\n' : '')
+        + (topNodeRows.length > 0 ? topNodeRows.join('\\n') : '- top nodes: (none)')
+        + '</pre>';
 
       selectedEl.innerHTML = ''
         + '<div><strong>' + escapeHtml(selected.id) + '</strong></div>'
@@ -455,7 +507,8 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         + (selected.errorCategory ? '<div class="meta">Category: ' + escapeHtml(selected.errorCategory) + '</div>' : '')
         + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '')
         + historyBlock
-        + patternBlock;
+        + patternBlock
+        + dashboardBlock;
     };
 
     const render = ({ resetScroll = false } = {}) => {
@@ -498,6 +551,10 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
     document.getElementById('toggleCollapse').addEventListener('click', () => {
       vscode.postMessage({ type: 'toggleCollapse' });
+    });
+
+    document.getElementById('resetPatterns').addEventListener('click', () => {
+      vscode.postMessage({ type: 'resetPatterns' });
     });
 
     document.getElementById('toggleLayout').addEventListener('click', () => {
@@ -677,6 +734,9 @@ export class ProjectionPanelController implements vscode.Disposable {
       }
       case 'toggleCollapse':
         await this.actions.onToggleCollapse()
+        return
+      case 'resetPatterns':
+        await this.actions.onResetPatterns()
         return
     }
   }

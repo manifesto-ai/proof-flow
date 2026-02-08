@@ -152,4 +152,131 @@ describe('ProofFlow custom world store', () => {
     expect(files[fileUri].lastSyncedAt).toBe(2)
     expect(Object.keys(files)).toEqual([fileUri])
   })
+
+  it('applies history/pattern patches with dynamic keys containing dots', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'proof-flow-worldstore-'))
+    tempDirs.push(rootPath)
+
+    const storeA = await createProofFlowWorldStore({ rootPath })
+
+    const fileUri = 'file:///tmp/proof.v1.lean'
+    const nodeId = 'node.with.dot'
+    const attemptId = 'attempt.1'
+    const patternKey = 'OTHER:auto.simp.v2'
+    const genesisId = 'w_genesis_dynamic' as any
+    const nextId = 'w_next_dynamic' as any
+
+    await storeA.initializeGenesis?.({
+      worldId: genesisId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-1',
+      createdAt: 1,
+      createdBy: null
+    } as any, {
+      data: {
+        history: {
+          version: '0.2.0',
+          files: {
+            [fileUri]: {
+              fileUri,
+              nodes: {
+                [nodeId]: {
+                  nodeId,
+                  attempts: {
+                    [attemptId]: {
+                      id: attemptId,
+                      fileUri,
+                      nodeId,
+                      timestamp: 1,
+                      tactic: 'simp',
+                      tacticKey: 'simp',
+                      result: 'error',
+                      contextErrorCategory: 'OTHER',
+                      errorMessage: 'x',
+                      durationMs: 3
+                    }
+                  },
+                  currentStreak: 1,
+                  totalAttempts: 1,
+                  lastAttemptAt: 1,
+                  lastSuccessAt: null,
+                  lastFailureAt: 1
+                }
+              },
+              totalAttempts: 1,
+              updatedAt: 1
+            }
+          }
+        },
+        patterns: {
+          version: '0.3.0',
+          entries: {
+            [patternKey]: {
+              key: patternKey,
+              errorCategory: 'OTHER',
+              tacticKey: 'simp',
+              successCount: 0,
+              failureCount: 1,
+              score: 0,
+              lastUpdated: 1,
+              dagFingerprint: null,
+              dagClusterId: null,
+              goalSignature: null
+            }
+          },
+          totalAttempts: 1,
+          updatedAt: 1
+        }
+      },
+      computed: {},
+      system: {
+        status: 'idle',
+        lastError: null,
+        errors: [],
+        pendingRequirements: [],
+        currentAction: null
+      },
+      meta: {
+        version: 1,
+        timestamp: 1,
+        randomSeed: 'seed',
+        schemaHash: 'schema-hash'
+      }
+    } as any)
+
+    await storeA.store({
+      worldId: nextId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-2',
+      createdAt: 2,
+      createdBy: 'p_1' as any
+    } as any, {
+      fromWorld: genesisId,
+      toWorld: nextId,
+      patches: [
+        {
+          op: 'set',
+          path: `data.history.files.${fileUri}.nodes.${nodeId}.attempts.${attemptId}.result`,
+          value: 'success'
+        },
+        {
+          op: 'set',
+          path: `data.patterns.entries.${patternKey}.score`,
+          value: 0.75
+        }
+      ],
+      createdAt: 2
+    } as any)
+
+    await delay(25)
+
+    const restored = await storeA.restore(nextId)
+    const history = (restored.data as any).history.files[fileUri]
+    const patterns = (restored.data as any).patterns.entries
+
+    expect(history.nodes[nodeId].attempts[attemptId].result).toBe('success')
+    expect(patterns[patternKey].score).toBe(0.75)
+    expect(Object.keys((restored.data as any).history.files)).toEqual([fileUri])
+    expect(Object.keys(patterns)).toEqual([patternKey])
+  })
 })

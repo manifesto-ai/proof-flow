@@ -10,13 +10,18 @@
   },
   "activationEvents": [
     "onLanguage:lean",
-    "onCommand:proof-flow.hello"
+    "onCommand:proof-flow.hello",
+    "onCommand:proof-flow.patternsReset"
   ],
   "contributes": {
     "commands": [
       {
         "command": "proof-flow.hello",
         "title": "ProofFlow: Toggle Panel"
+      },
+      {
+        "command": "proof-flow.patternsReset",
+        "title": "ProofFlow: Reset Patterns"
       }
     ]
   },

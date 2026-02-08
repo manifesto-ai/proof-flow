@@ -230,6 +230,11 @@ const maybeRecordAttempt = async (targetFileUri: string): Promise<void> => {
 export async function activate(context: vscode.ExtensionContext) {
   let readyApp: App
 
+  const resetPatterns = async (): Promise<void> => {
+    attemptFingerprints.clear()
+    await actSafely('patterns_reset')
+  }
+
   panelController = new ProjectionPanelController(context, {
     onNodeSelect: async (nodeId) => {
       await actSafely('node_select', { nodeId })
@@ -245,6 +250,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     onToggleCollapse: async () => {
       await actSafely('collapse_toggle')
+    },
+    onResetPatterns: async () => {
+      await resetPatterns()
     }
   })
 
@@ -281,6 +289,10 @@ export async function activate(context: vscode.ExtensionContext) {
     if (nextVisible) {
       panelController?.reveal()
     }
+  })
+
+  const resetPatternsCommand = vscode.commands.registerCommand('proof-flow.patternsReset', async () => {
+    await resetPatterns()
   })
 
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
@@ -337,6 +349,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     togglePanel,
+    resetPatternsCommand,
     onEditorChange,
     onDocumentSave,
     onDiagnosticsChange,

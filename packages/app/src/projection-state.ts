@@ -11,6 +11,10 @@ import type {
   ProofNode
 } from '@proof-flow/schema'
 
+const MIN_PATTERN_SAMPLE = 3
+
+export type ProjectionHeatLevel = 'none' | 'low' | 'medium' | 'high'
+
 export type ProjectionNode = {
   id: string
   label: string
@@ -24,6 +28,8 @@ export type ProjectionNode = {
   endCol: number
   children: string[]
   dependencies: string[]
+  attemptCount: number
+  heatLevel: ProjectionHeatLevel
 }
 
 export type ProjectionAttemptOverview = {
@@ -58,8 +64,22 @@ export type ProjectionPatternInsight = {
   tacticKey: string
   successCount: number
   failureCount: number
+  sampleSize: number
   score: number
+  successRate: number
   lastUpdated: number
+}
+
+export type ProjectionDashboard = {
+  totalPatterns: number
+  qualifiedPatterns: number
+  errorCategoryTotals: Record<ErrorCategory, number>
+  topNodeAttempts: Array<{
+    nodeId: string
+    totalAttempts: number
+    currentStreak: number
+    lastResult: AttemptResult | null
+  }>
 }
 
 export type ProjectionState = {
@@ -79,45 +99,43 @@ export type ProjectionState = {
   } | null
   summaryMetrics: DagMetrics | null
   attemptOverview: ProjectionAttemptOverview
+  nodeHeatmap: Record<string, { attemptCount: number; heatLevel: ProjectionHeatLevel }>
+  dashboard: ProjectionDashboard
   nodes: ProjectionNode[]
   selectedNode: ProjectionNode | null
   selectedNodeHistory: ProjectionNodeHistory
   patternInsights: ProjectionPatternInsight[]
 }
 
-const toProjectionNode = (node: ProofNode): ProjectionNode => ({
-  id: node.id,
-  label: node.label,
-  kind: node.kind,
-  statusKind: node.status.kind,
-  errorMessage: node.status.errorMessage,
-  errorCategory: node.status.errorCategory,
-  startLine: node.leanRange.startLine,
-  endLine: node.leanRange.endLine,
-  startCol: node.leanRange.startCol,
-  endCol: node.leanRange.endCol,
-  children: [...node.children],
-  dependencies: [...node.dependencies]
+type FileHistory = ProofFlowState['history']['files'][string]
+type NodeHistory = FileHistory['nodes'][string]
+
+type NormalizedPattern = ProjectionPatternInsight & {
+  qualified: boolean
+}
+
+const emptyErrorCategoryTotals = (): Record<ErrorCategory, number> => ({
+  TYPE_MISMATCH: 0,
+  UNKNOWN_IDENTIFIER: 0,
+  TACTIC_FAILED: 0,
+  UNSOLVED_GOALS: 0,
+  TIMEOUT: 0,
+  KERNEL_ERROR: 0,
+  SYNTAX_ERROR: 0,
+  OTHER: 0
 })
 
-const toProjectionNodes = (dag: ProofDAG | null): ProjectionNode[] => {
-  if (!dag) {
-    return []
+const toHeatLevel = (count: number): ProjectionHeatLevel => {
+  if (count <= 0) {
+    return 'none'
   }
-
-  return Object.values(dag.nodes)
-    .map(toProjectionNode)
-    .sort((left, right) => {
-      if (left.startLine !== right.startLine) {
-        return left.startLine - right.startLine
-      }
-
-      if (left.startCol !== right.startCol) {
-        return left.startCol - right.startCol
-      }
-
-      return left.id.localeCompare(right.id)
-    })
+  if (count <= 3) {
+    return 'low'
+  }
+  if (count <= 10) {
+    return 'medium'
+  }
+  return 'high'
 }
 
 const sortAttemptsByRecency = (
@@ -130,6 +148,67 @@ const sortAttemptsByRecency = (
     }
     return right.id.localeCompare(left.id)
   })
+
+const latestAttemptResult = (attempts: Record<string, AttemptRecord>): AttemptResult | null => {
+  const latest = sortAttemptsByRecency(attempts)[0]
+  return latest?.result ?? null
+}
+
+const toNodeAttemptCounts = (fileHistory: FileHistory | undefined): Record<string, number> => {
+  if (!fileHistory) {
+    return {}
+  }
+
+  const entries = Object.values(fileHistory.nodes).map((node) => [
+    node.nodeId,
+    node.totalAttempts
+  ] as const)
+
+  return Object.fromEntries(entries)
+}
+
+const toProjectionNode = (
+  node: ProofNode,
+  attemptCount: number
+): ProjectionNode => ({
+  id: node.id,
+  label: node.label,
+  kind: node.kind,
+  statusKind: node.status.kind,
+  errorMessage: node.status.errorMessage,
+  errorCategory: node.status.errorCategory,
+  startLine: node.leanRange.startLine,
+  endLine: node.leanRange.endLine,
+  startCol: node.leanRange.startCol,
+  endCol: node.leanRange.endCol,
+  children: [...node.children],
+  dependencies: [...node.dependencies],
+  attemptCount,
+  heatLevel: toHeatLevel(attemptCount)
+})
+
+const toProjectionNodes = (
+  dag: ProofDAG | null,
+  nodeAttempts: Record<string, number>
+): ProjectionNode[] => {
+  if (!dag) {
+    return []
+  }
+
+  return Object.values(dag.nodes)
+    .map((node) => toProjectionNode(node, nodeAttempts[node.id] ?? 0))
+    .sort((left, right) => {
+      if (left.startLine !== right.startLine) {
+        return left.startLine - right.startLine
+      }
+
+      if (left.startCol !== right.startCol) {
+        return left.startCol - right.startCol
+      }
+
+      return left.id.localeCompare(right.id)
+    })
+}
 
 const toNodeHistory = (
   attempts: Record<string, AttemptRecord>,
@@ -162,42 +241,106 @@ const toNodeHistory = (
   }
 }
 
-const toPatternInsights = (
-  entries: Record<string, PatternEntry>,
-  selectedErrorCategory: ErrorCategory | null
-): ProjectionPatternInsight[] => {
-  const sorted = Object.values(entries)
-    .map((entry) => ({
+const toNormalizedPatterns = (
+  entries: Record<string, PatternEntry>
+): NormalizedPattern[] => Object.values(entries)
+  .map((entry) => {
+    const sampleSize = entry.successCount + entry.failureCount
+    const successRate = sampleSize > 0 ? entry.successCount / sampleSize : 0
+
+    return {
       key: entry.key,
       errorCategory: entry.errorCategory,
       tacticKey: entry.tacticKey,
       successCount: entry.successCount,
       failureCount: entry.failureCount,
+      sampleSize,
       score: entry.score,
-      lastUpdated: entry.lastUpdated
-    }))
-    .sort((left, right) => {
-      const leftTotal = left.successCount + left.failureCount
-      const rightTotal = right.successCount + right.failureCount
-      if (leftTotal !== rightTotal) {
-        return rightTotal - leftTotal
-      }
-      if (left.score !== right.score) {
-        return right.score - left.score
-      }
-      return right.lastUpdated - left.lastUpdated
-    })
+      successRate,
+      lastUpdated: entry.lastUpdated,
+      qualified: sampleSize >= MIN_PATTERN_SAMPLE
+    }
+  })
 
-  if (!selectedErrorCategory) {
-    return sorted.slice(0, 5)
-  }
+const sortPatterns = (patterns: NormalizedPattern[]): NormalizedPattern[] => patterns
+  .slice()
+  .sort((left, right) => {
+    if (left.successRate !== right.successRate) {
+      return right.successRate - left.successRate
+    }
 
-  const matched = sorted.filter((entry) => entry.errorCategory === selectedErrorCategory)
-  if (matched.length > 0) {
-    return matched.slice(0, 5)
+    if (left.sampleSize !== right.sampleSize) {
+      return right.sampleSize - left.sampleSize
+    }
+
+    if (left.score !== right.score) {
+      return right.score - left.score
+    }
+
+    return right.lastUpdated - left.lastUpdated
+  })
+
+const toPatternInsights = (
+  patterns: NormalizedPattern[],
+  selectedErrorCategory: ErrorCategory | null
+): ProjectionPatternInsight[] => {
+  const qualified = patterns.filter((entry) => entry.qualified)
+  const sorted = sortPatterns(qualified)
+
+  if (selectedErrorCategory) {
+    const matched = sorted.filter((entry) => entry.errorCategory === selectedErrorCategory)
+    if (matched.length > 0) {
+      return matched.slice(0, 5)
+    }
   }
 
   return sorted.slice(0, 5)
+}
+
+const toDashboard = (
+  patterns: NormalizedPattern[],
+  fileHistory: FileHistory | undefined
+): ProjectionDashboard => {
+  const totals = emptyErrorCategoryTotals()
+  for (const entry of patterns) {
+    totals[entry.errorCategory] += entry.sampleSize
+  }
+
+  const topNodeAttempts = fileHistory
+    ? Object.values(fileHistory.nodes)
+      .map((node): ProjectionDashboard['topNodeAttempts'][number] => ({
+        nodeId: node.nodeId,
+        totalAttempts: node.totalAttempts,
+        currentStreak: node.currentStreak,
+        lastResult: latestAttemptResult(node.attempts)
+      }))
+      .sort((left, right) => {
+        if (left.totalAttempts !== right.totalAttempts) {
+          return right.totalAttempts - left.totalAttempts
+        }
+        return left.nodeId.localeCompare(right.nodeId)
+      })
+      .slice(0, 10)
+    : []
+
+  return {
+    totalPatterns: patterns.length,
+    qualifiedPatterns: patterns.filter((entry) => entry.qualified).length,
+    errorCategoryTotals: totals,
+    topNodeAttempts
+  }
+}
+
+const toNodeHeatmap = (nodeAttempts: Record<string, number>): ProjectionState['nodeHeatmap'] => {
+  const entries = Object.entries(nodeAttempts).map(([nodeId, count]) => [
+    nodeId,
+    {
+      attemptCount: count,
+      heatLevel: toHeatLevel(count)
+    }
+  ] as const)
+
+  return Object.fromEntries(entries)
 }
 
 export const selectProjectionState = (appState: AppState<unknown>): ProjectionState => {
@@ -205,11 +348,13 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
   const computed = appState.computed as Record<string, unknown>
   const activeDag = (computed['computed.activeDag'] as ProofDAG | null) ?? null
   const selectedNodeRaw = computed['computed.selectedNode'] as ProofNode | null | undefined
-  const nodes = toProjectionNodes(activeDag)
   const activeFileUri = state.ui.activeFileUri
   const selectedNodeId = state.ui.selectedNodeId ?? state.ui.cursorNodeId
   const fileHistory = activeFileUri ? state.history.files[activeFileUri] : undefined
   const nodeHistory = selectedNodeId ? fileHistory?.nodes[selectedNodeId] : undefined
+  const nodeAttempts = toNodeAttemptCounts(fileHistory)
+  const nodeHeatmap = toNodeHeatmap(nodeAttempts)
+  const nodes = toProjectionNodes(activeDag, nodeAttempts)
   const selectedNodeHistory = nodeHistory
     ? toNodeHistory(
         nodeHistory.attempts,
@@ -221,8 +366,10 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
         nodeHistory.lastFailureAt
       )
     : null
-  const selectedErrorCategory = selectedNodeRaw?.status.errorCategory ?? null
-  const patternInsights = toPatternInsights(state.patterns.entries, selectedErrorCategory)
+
+  const normalizedPatterns = toNormalizedPatterns(state.patterns.entries)
+  const preferredCategory = selectedNodeRaw?.status.errorCategory ?? null
+  const patternInsights = toPatternInsights(normalizedPatterns, preferredCategory)
 
   return {
     ui: {
@@ -247,8 +394,10 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
       fileAttempts: fileHistory?.totalAttempts ?? 0,
       selectedNodeAttempts: nodeHistory?.totalAttempts ?? 0
     },
+    nodeHeatmap,
+    dashboard: toDashboard(normalizedPatterns, fileHistory),
     nodes,
-    selectedNode: selectedNodeRaw ? toProjectionNode(selectedNodeRaw) : null,
+    selectedNode: selectedNodeRaw ? toProjectionNode(selectedNodeRaw, nodeAttempts[selectedNodeRaw.id] ?? 0) : null,
     selectedNodeHistory,
     patternInsights
   }

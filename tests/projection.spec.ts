@@ -220,13 +220,35 @@ describe('Projection selector', () => {
     expect(projection.attemptOverview.totalAttempts).toBe(8)
     expect(projection.attemptOverview.fileAttempts).toBe(3)
     expect(projection.attemptOverview.selectedNodeAttempts).toBe(3)
+    expect(projection.nodeHeatmap.child).toEqual({
+      attemptCount: 3,
+      heatLevel: 'low'
+    })
+    expect(projection.nodes.find((node) => node.id === 'child')?.attemptCount).toBe(3)
+    expect(projection.nodes.find((node) => node.id === 'root')?.heatLevel).toBe('none')
     expect(projection.selectedNodeHistory?.currentStreak).toBe(2)
     expect(projection.selectedNodeHistory?.lastResult).toBe('error')
     expect(projection.selectedNodeHistory?.recentAttempts[0]?.id).toBe('a3')
+    expect(projection.dashboard).toMatchObject({
+      totalPatterns: 3,
+      qualifiedPatterns: 3
+    })
+    expect(projection.dashboard.errorCategoryTotals.OTHER).toBe(8)
+    expect(projection.dashboard.errorCategoryTotals.TACTIC_FAILED).toBe(5)
+    expect(projection.dashboard.topNodeAttempts[0]).toMatchObject({
+      nodeId: 'child',
+      totalAttempts: 3,
+      currentStreak: 2,
+      lastResult: 'error'
+    })
     expect(projection.patternInsights.map((entry) => entry.key)).toEqual([
-      'OTHER:aesop',
-      'OTHER:exact'
+      'OTHER:exact',
+      'OTHER:aesop'
     ])
+    expect(projection.patternInsights[0]).toMatchObject({
+      sampleSize: 3,
+      successRate: 2 / 3
+    })
   })
 
   it('returns safe null projection when computed dag is absent', () => {
@@ -238,6 +260,11 @@ describe('Projection selector', () => {
       totalAttempts: 0,
       fileAttempts: 0,
       selectedNodeAttempts: 0
+    })
+    expect(projection.nodeHeatmap).toEqual({})
+    expect(projection.dashboard).toMatchObject({
+      totalPatterns: 0,
+      qualifiedPatterns: 0
     })
     expect(projection.nodes).toEqual([])
     expect(projection.selectedNode).toBeNull()

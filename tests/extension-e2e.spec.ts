@@ -440,4 +440,24 @@ describe('Extension E2E flow', () => {
 
     await extension.deactivate()
   })
+
+  it('dispatches pattern reset from command and panel action', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+
+    const resetCommand = env.getCommand('proof-flow.patternsReset')
+    expect(resetCommand).toBeTypeOf('function')
+
+    await resetCommand?.()
+
+    const panel = env.getPanel() as { actions: { onResetPatterns: () => Promise<void> } }
+    await panel.actions.onResetPatterns()
+
+    const resetCalls = env.getActCalls().filter((call) => call.type === 'patterns_reset')
+    expect(resetCalls.length).toBe(2)
+
+    await extension.deactivate()
+  })
 })
