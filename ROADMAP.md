@@ -29,6 +29,7 @@
 - ✅ Host suggestion effect baseline (`proof_flow.attempt.suggest`) + deterministic ranking tests
 - ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
 - ✅ v0.4.1 stable goal source integration (`$/lean/plainGoal`, `$/lean/plainTermGoal`) + source stats
+- ✅ v0.4.2 closed-loop baseline (`attempt_apply` effect + panel apply + post-apply re-suggest)
 - 🔜 v0.4.1 Goal fidelity spike (node-level goal extraction quality)
 - 🔜 v0.4.2 Suggestion closed loop (suggest -> apply -> attempt_record)
 - 🔜 v0.4.3 Start-Here triage (unresolved/sorry priority queue)
@@ -119,9 +120,9 @@
 - [ ] 리포트: 정확도/누락 케이스/실패 패턴 문서화
 
 ### 11. v0.4.2 Suggestion Closed Loop (P0)
-- [ ] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
-- [ ] host/app 연결: suggest 선택 -> apply effect -> `attempt_record` 자동 반영
-- [ ] 실패/성공 결과를 history/patterns/suggestions에 일관 반영
+- [x] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
+- [x] host/app 연결: suggest 선택 -> apply effect -> `attempt_record` 자동 반영
+- [x] 실패/성공 결과를 history/patterns/suggestions에 일관 반영
 - [ ] 통합 E2E: suggest -> apply -> record -> resuggest 시나리오 검증
 
 ### 12. v0.4.3 Start-Here Triage (P0)

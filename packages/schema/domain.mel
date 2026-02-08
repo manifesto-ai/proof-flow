@@ -371,6 +371,26 @@ domain ProofFlow {
     }
   }
 
+  action attempt_apply(
+    fileUri: string,
+    nodeId: string,
+    tactic: string,
+    tacticKey: string,
+    contextErrorCategory: ErrorCategory | null,
+    errorMessage: string | null
+  ) {
+    onceIntent {
+      effect proof_flow.attempt.apply({
+        fileUri: fileUri,
+        nodeId: nodeId,
+        tactic: tactic,
+        tacticKey: tacticKey,
+        contextErrorCategory: contextErrorCategory,
+        errorMessage: errorMessage
+      })
+    }
+  }
+
   action history_clear() {
     when true {
       patch history = {

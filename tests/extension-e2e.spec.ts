@@ -486,6 +486,31 @@ describe('Extension E2E flow', () => {
     await extension.deactivate()
   })
 
+  it('applies selected suggestion through panel action', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+    env.fakeState.data.ui.cursorNodeId = 'root'
+
+    const panel = env.getPanel() as { actions: { onApplySuggestion: (tacticKey: string) => Promise<void> } }
+    await panel.actions.onApplySuggestion('simp')
+
+    const calls = env.getActCalls()
+    const applyCall = calls.find((call) => call.type === 'attempt_apply')
+    expect(applyCall?.input).toMatchObject({
+      fileUri: env.leanUri.toString(),
+      nodeId: 'root',
+      tactic: 'simp',
+      tacticKey: 'simp'
+    })
+
+    expect(calls.map((call) => call.type)).toContain('dag_sync')
+    expect(calls.map((call) => call.type)).toContain('attempt_suggest')
+
+    await extension.deactivate()
+  })
+
   it('reports goal coverage for active DAG', async () => {
     const extension = await import('../packages/app/src/extension.ts')
     const context = { subscriptions: [] as Array<{ dispose: () => void }> }

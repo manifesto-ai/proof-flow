@@ -32,6 +32,11 @@ export type CreateAttemptRecordEffectOptions = {
   }) => string
 }
 
+export type BuildAttemptRecordPatchesOptions = Pick<
+  CreateAttemptRecordEffectOptions,
+  'now' | 'createAttemptId'
+>
+
 const ATTEMPT_RESULTS = new Set<AttemptResult>([
   'success',
   'error',
@@ -140,6 +145,40 @@ const createDefaultAttemptId = (input: {
   timestamp: number
   sequence: number
 }): string => `${input.timestamp}:${input.sequence}`
+
+export const buildAttemptRecordPatches = (
+  snapshotData: Record<string, unknown>,
+  input: AttemptRecordInput,
+  options: BuildAttemptRecordPatchesOptions = {}
+): EffectPatch[] => {
+  const timestamp = options.now?.() ?? Date.now()
+
+  const historyState = asHistoryState(snapshotData)
+  const previousFile = asRecord(historyState.files[input.fileUri])
+  const previousNodes = asRecord(previousFile?.nodes) ?? {}
+  const previousNode = asRecord(previousNodes[input.nodeId])
+  const sequence = asNumber(previousNode?.totalAttempts) + 1
+  const attemptId = options.createAttemptId?.({
+    timestamp,
+    fileUri: input.fileUri,
+    nodeId: input.nodeId,
+    tacticKey: input.tacticKey,
+    sequence
+  }) ?? createDefaultAttemptId({ timestamp, sequence })
+
+  return [
+    {
+      op: 'set',
+      path: 'history',
+      value: toHistoryPatchValue(snapshotData, input, timestamp, attemptId)
+    },
+    {
+      op: 'set',
+      path: 'patterns',
+      value: toPatternsPatchValue(snapshotData, input, timestamp)
+    }
+  ]
+}
 
 const toHistoryPatchValue = (
   snapshotData: Record<string, unknown>,
@@ -254,33 +293,8 @@ export const createAttemptRecordEffect = (
   }
 
   const snapshotData = getSnapshotData(ctx)
-  const timestamp = options.now?.() ?? Date.now()
-
-  const historyState = asHistoryState(snapshotData)
-  const previousFile = asRecord(historyState.files[input.fileUri])
-  const previousNodes = asRecord(previousFile?.nodes) ?? {}
-  const previousNode = asRecord(previousNodes[input.nodeId])
-  const sequence = asNumber(previousNode?.totalAttempts) + 1
-  const attemptId = options.createAttemptId?.({
-    timestamp,
-    fileUri: input.fileUri,
-    nodeId: input.nodeId,
-    tacticKey: input.tacticKey,
-    sequence
-  }) ?? createDefaultAttemptId({ timestamp, sequence })
-
-  const patches: EffectPatch[] = [
-    {
-      op: 'set',
-      path: 'history',
-      value: toHistoryPatchValue(snapshotData, input, timestamp, attemptId)
-    },
-    {
-      op: 'set',
-      path: 'patterns',
-      value: toPatternsPatchValue(snapshotData, input, timestamp)
-    }
-  ]
-
-  return patches
+  return buildAttemptRecordPatches(snapshotData, input, {
+    now: options.now,
+    createAttemptId: options.createAttemptId
+  })
 }

@@ -25,7 +25,8 @@ describe('ProofFlow app config', () => {
         'proof_flow.dag.extract': async () => [],
         'proof_flow.editor.reveal': async () => [],
         'proof_flow.attempt.record': async () => [],
-        'proof_flow.attempt.suggest': async () => []
+        'proof_flow.attempt.suggest': async () => [],
+        'proof_flow.attempt.apply': async () => []
       }
     })
 

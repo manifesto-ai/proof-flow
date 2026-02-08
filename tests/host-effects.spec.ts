@@ -8,6 +8,7 @@ import {
 } from '../packages/host/src/effects/cursor-get.js'
 import { createAttemptRecordEffect } from '../packages/host/src/effects/attempt-record.js'
 import { createAttemptSuggestEffect } from '../packages/host/src/effects/attempt-suggest.js'
+import { createAttemptApplyEffect } from '../packages/host/src/effects/attempt-apply.js'
 
 const fileUri = 'file:///proof.lean'
 
@@ -456,6 +457,81 @@ describe('Host effects', () => {
     expect(patterns.entries[patternKey].successCount).toBe(1)
     expect(patterns.entries[patternKey].failureCount).toBe(0)
     expect(patterns.entries[patternKey].score).toBe(1)
+  })
+
+  it('attempt.apply records success when tactic insertion succeeds', async () => {
+    const effect = createAttemptApplyEffect({
+      now: () => 1700000000020,
+      apply: async () => ({
+        applied: true,
+        durationMs: 9
+      })
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'simp',
+      tacticKey: 'simp',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: null
+    }, {
+      snapshot: { data: {} }
+    })
+
+    const historyPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'history')
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+    const attempts = (historyPatch as { value: any }).value.files[fileUri].nodes.child.attempts
+    const firstAttempt = Object.values(attempts)[0] as {
+      result: string
+      durationMs: number | null
+      contextErrorCategory: string | null
+    }
+
+    expect(firstAttempt.result).toBe('success')
+    expect(firstAttempt.durationMs).toBe(9)
+    expect(firstAttempt.contextErrorCategory).toBe('TACTIC_FAILED')
+
+    const patterns = (patternsPatch as { value: any }).value
+    expect(patterns.entries['TACTIC_FAILED:simp'].successCount).toBe(1)
+    expect(patterns.entries['TACTIC_FAILED:simp'].failureCount).toBe(0)
+  })
+
+  it('attempt.apply records failure when apply runner throws', async () => {
+    const effect = createAttemptApplyEffect({
+      now: () => 1700000000030,
+      apply: async () => {
+        throw new Error('editor busy')
+      }
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'exact',
+      tacticKey: 'exact',
+      contextErrorCategory: null,
+      errorMessage: null
+    }, {
+      snapshot: { data: {} }
+    })
+
+    const historyPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'history')
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+    const attempts = (historyPatch as { value: any }).value.files[fileUri].nodes.child.attempts
+    const firstAttempt = Object.values(attempts)[0] as {
+      result: string
+      errorMessage: string | null
+      contextErrorCategory: string | null
+    }
+
+    expect(firstAttempt.result).toBe('error')
+    expect(firstAttempt.errorMessage).toBe('editor busy')
+    expect(firstAttempt.contextErrorCategory).toBeNull()
+
+    const patterns = (patternsPatch as { value: any }).value
+    expect(patterns.entries['OTHER:exact'].successCount).toBe(0)
+    expect(patterns.entries['OTHER:exact'].failureCount).toBe(1)
   })
 
   it('attempt.suggest ranks by category match, score, and sample size', async () => {

@@ -33,7 +33,8 @@ const createApp = async (): Promise<App> => {
       'proof_flow.editor.reveal': async () => [],
       'proof_flow.editor.getCursor': async () => [],
       'proof_flow.attempt.record': async () => [],
-      'proof_flow.attempt.suggest': async () => []
+      'proof_flow.attempt.suggest': async () => [],
+      'proof_flow.attempt.apply': async () => []
     }
   })
 

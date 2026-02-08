@@ -81,6 +81,7 @@ describe('Attempt replay and restore', () => {
         'proof_flow.dag.extract': async () => [],
         'proof_flow.editor.reveal': async () => [],
         'proof_flow.attempt.suggest': async () => [],
+        'proof_flow.attempt.apply': async () => [],
         'proof_flow.attempt.record': createAttemptRecordEffect({
           now: () => 1700000000000,
           createAttemptId: ({ sequence }) => `attempt-${sequence}`

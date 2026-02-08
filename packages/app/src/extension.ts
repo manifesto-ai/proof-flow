@@ -1024,6 +1024,77 @@ const loadGoalHintsFromLeanCommands = async (
   return { hints, commandsUsed }
 }
 
+const clampPositionToDocument = (
+  document: vscode.TextDocument,
+  position: { line: number; character: number }
+): vscode.Position => {
+  if (document.lineCount <= 0) {
+    return new vscode.Position(0, 0)
+  }
+
+  const safeLine = Math.max(0, Math.min(position.line, document.lineCount - 1))
+  const lineText = document.lineAt(safeLine).text
+  const safeCharacter = Math.max(0, Math.min(position.character, lineText.length))
+  return new vscode.Position(safeLine, safeCharacter)
+}
+
+const resolveApplyInsertionPosition = (
+  document: vscode.TextDocument,
+  fileUri: string,
+  nodeId: string,
+  fallback: vscode.Position
+): vscode.Position => {
+  const state = app?.getState<ProofFlowState>().data
+  const range = state?.files[fileUri]?.dag?.nodes[nodeId]?.leanRange
+  if (!range) {
+    return fallback
+  }
+
+  return clampPositionToDocument(document, {
+    line: Math.max(0, range.endLine - 1),
+    character: Math.max(0, range.endCol)
+  })
+}
+
+const applySuggestionToEditor = async (input: {
+  fileUri: string
+  nodeId: string
+  tactic: string
+}): Promise<{
+  applied: boolean
+  errorMessage?: string | null
+  durationMs?: number | null
+}> => {
+  const tactic = input.tactic.trim()
+  if (tactic.length === 0) {
+    return {
+      applied: false,
+      errorMessage: 'empty tactic',
+      durationMs: 0
+    }
+  }
+
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(input.fileUri))
+  const editor = await vscode.window.showTextDocument(document)
+  const insertAt = resolveApplyInsertionPosition(
+    document,
+    input.fileUri,
+    input.nodeId,
+    editor.selection.active
+  )
+
+  const startedAt = Date.now()
+  const applied = await editor.edit((builder) => {
+    builder.insert(insertAt, `${tactic}\n`)
+  })
+
+  return {
+    applied,
+    errorMessage: applied ? null : 'editor rejected edit',
+    durationMs: Date.now() - startedAt
+  }
+}
+
 const proofFlowEffects: Effects = createProofFlowEffects({
   dagExtract: {
     loadContext: async ({ fileUri }) => {
@@ -1093,6 +1164,13 @@ const proofFlowEffects: Effects = createProofFlowEffects({
         }
       }
     }
+  },
+  attemptApply: {
+    apply: async (input) => applySuggestionToEditor({
+      fileUri: input.fileUri,
+      nodeId: input.nodeId,
+      tactic: input.tactic
+    })
   }
 })
 
@@ -1264,6 +1342,33 @@ export async function activate(context: vscode.ExtensionContext) {
     await actSafely('attempt_suggest', { fileUri, nodeId })
   }
 
+  const applySuggestionForCurrentNode = async (tacticKey: string): Promise<void> => {
+    if (!app) {
+      return
+    }
+
+    const state = app.getState<ProofFlowState>().data
+    const fileUri = state.ui.activeFileUri
+    const nodeId = state.ui.selectedNodeId ?? state.ui.cursorNodeId
+    if (!fileUri || !nodeId) {
+      void vscode.window.showInformationMessage('[ProofFlow] Select a node before applying a suggestion.')
+      return
+    }
+
+    const node = state.files[fileUri]?.dag?.nodes[nodeId]
+    await actSafely('attempt_apply', {
+      fileUri,
+      nodeId,
+      tactic: tacticKey,
+      tacticKey,
+      contextErrorCategory: node?.status.errorCategory ?? null,
+      errorMessage: node?.status.errorMessage ?? null
+    })
+
+    await actSafely('dag_sync', { fileUri })
+    await actSafely('attempt_suggest', { fileUri, nodeId })
+  }
+
   panelController = new ProjectionPanelController(context, {
     onNodeSelect: async (nodeId) => {
       await actSafely('node_select', { nodeId })
@@ -1285,6 +1390,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     onSuggestTactics: async () => {
       await suggestTacticsForCurrentNode()
+    },
+    onApplySuggestion: async (tacticKey) => {
+      await applySuggestionForCurrentNode(tacticKey)
     }
   })
 

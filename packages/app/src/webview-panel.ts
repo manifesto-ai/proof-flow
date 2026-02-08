@@ -11,6 +11,7 @@ export type ProjectionPanelActions = {
   onToggleCollapse: () => Promise<void>
   onResetPatterns: () => Promise<void>
   onSuggestTactics: () => Promise<void>
+  onApplySuggestion: (tacticKey: string) => Promise<void>
 }
 
 type WebviewMessage =
@@ -21,6 +22,7 @@ type WebviewMessage =
   | { type: 'toggleCollapse' }
   | { type: 'resetPatterns' }
   | { type: 'suggestTactics' }
+  | { type: 'applySuggestion'; payload?: { tacticKey?: string } }
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -483,19 +485,24 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
       const suggestions = Array.isArray(state.selectedNodeSuggestions) ? state.selectedNodeSuggestions : [];
       const suggestionBlock = suggestions.length > 0
-        ? '<pre class="meta">Suggested Tactics:\\n'
+        ? '<div class="meta" style="margin-top:8px;">Suggested Tactics (click to apply):</div>'
+          + '<div class="row">'
           + suggestions
             .slice(0, 5)
             .map((entry) => {
               const category = entry.sourceCategory ? ' @ ' + entry.sourceCategory : '';
-              return '- ' + entry.tacticKey
+              const encodedTacticKey = encodeURIComponent(entry.tacticKey);
+              const label = entry.tacticKey
                 + category
-                + ' => score ' + Number(entry.score || 0).toFixed(2)
-                + ', sample ' + (entry.sampleSize || 0)
-                + ', winrate ' + Number(entry.successRate || 0).toFixed(2);
+                + ' · score ' + Number(entry.score || 0).toFixed(2)
+                + ' · sample ' + (entry.sampleSize || 0)
+                + ' · winrate ' + Number(entry.successRate || 0).toFixed(2);
+              return '<button class="btn" data-suggestion-key="' + encodedTacticKey + '">'
+                + escapeHtml(label)
+                + '</button>';
             })
-            .join('\\n')
-          + '</pre>'
+            .join('')
+          + '</div>'
         : '<div class="meta">No tactic suggestions yet. Run Suggest Tactics.</div>';
 
       const dashboard = state.dashboard || {
@@ -581,6 +588,36 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
     document.getElementById('suggestTactics').addEventListener('click', () => {
       vscode.postMessage({ type: 'suggestTactics' });
+    });
+
+    selectedEl.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const button = target.closest('[data-suggestion-key]');
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const encoded = button.getAttribute('data-suggestion-key');
+      if (!encoded) {
+        return;
+      }
+
+      let tacticKey = encoded;
+      try {
+        tacticKey = decodeURIComponent(encoded);
+      }
+      catch {
+        tacticKey = encoded;
+      }
+
+      vscode.postMessage({
+        type: 'applySuggestion',
+        payload: { tacticKey }
+      });
     });
 
     document.getElementById('toggleLayout').addEventListener('click', () => {
@@ -767,6 +804,14 @@ export class ProjectionPanelController implements vscode.Disposable {
       case 'suggestTactics':
         await this.actions.onSuggestTactics()
         return
+      case 'applySuggestion': {
+        const payload = asRecord(message.payload)
+        const tacticKey = payload?.tacticKey
+        if (typeof tacticKey === 'string' && tacticKey.length > 0) {
+          await this.actions.onApplySuggestion(tacticKey)
+        }
+        return
+      }
     }
   }
 

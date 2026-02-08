@@ -323,4 +323,80 @@ describe('ProofFlow domain actions', () => {
     expect(state.data.suggestions.byNode).toEqual({})
     expect(state.data.suggestions.updatedAt).toBeNull()
   })
+
+  it('attempt.apply routes through host effect and updates history/patterns', async () => {
+    const fileUri = 'file:///proof.lean'
+    const nodeId = 'root'
+    const applyCalls: Array<{ fileUri: string; nodeId: string; tacticKey: string }> = []
+
+    const app = await createApp({
+      'proof_flow.attempt.apply': async (params) => {
+        const payload = params as {
+          fileUri: string
+          nodeId: string
+          tacticKey: string
+        }
+        applyCalls.push(payload)
+
+        return [
+          {
+            op: 'set',
+            path: 'history',
+            value: {
+              version: '0.2.0',
+              files: {
+                [fileUri]: {
+                  fileUri,
+                  nodes: {
+                    [nodeId]: {
+                      nodeId,
+                      attempts: {},
+                      currentStreak: 0,
+                      totalAttempts: 1,
+                      lastAttemptAt: 200,
+                      lastSuccessAt: 200,
+                      lastFailureAt: null
+                    }
+                  },
+                  totalAttempts: 1,
+                  updatedAt: 200
+                }
+              }
+            }
+          },
+          {
+            op: 'set',
+            path: 'patterns',
+            value: {
+              version: '0.3.0',
+              entries: {},
+              totalAttempts: 1,
+              updatedAt: 200
+            }
+          }
+        ]
+      }
+    })
+
+    await app.act('attempt_apply', {
+      fileUri,
+      nodeId,
+      tactic: 'exact',
+      tacticKey: 'exact',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: null
+    }).done()
+
+    const state = app.getState<ProofFlowState>()
+    expect(applyCalls).toHaveLength(1)
+    expect(applyCalls[0]).toMatchObject({
+      fileUri,
+      nodeId,
+      tactic: 'exact',
+      tacticKey: 'exact',
+      contextErrorCategory: 'TACTIC_FAILED'
+    })
+    expect(state.data.history.files[fileUri]?.totalAttempts).toBe(1)
+    expect(state.data.patterns.totalAttempts).toBe(1)
+  })
 })
