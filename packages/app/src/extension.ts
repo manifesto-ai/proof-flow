@@ -1,7 +1,11 @@
 import * as vscode from 'vscode'
 import type { App, Effects } from '@manifesto-ai/app'
-import type { ProofFlowState } from '@proof-flow/schema'
-import type { Range } from '@proof-flow/schema'
+import type {
+  AttemptResult,
+  ProofFlowState,
+  Range,
+  StatusKind
+} from '@proof-flow/schema'
 import {
   createProofFlowEffects,
   resolveNodeIdAtCursor,
@@ -17,6 +21,7 @@ import {
 
 let app: App | null = null
 let panelController: ProjectionPanelController | null = null
+const attemptFingerprints = new Map<string, string>()
 
 const isLeanDocument = (document: vscode.TextDocument): boolean => (
   document.languageId === 'lean'
@@ -168,6 +173,60 @@ const actSafely = async (type: string, input?: unknown): Promise<void> => {
   }
 }
 
+const toAttemptResult = (status: StatusKind): AttemptResult => {
+  switch (status) {
+    case 'resolved': return 'success'
+    case 'error': return 'error'
+    case 'sorry': return 'placeholder'
+    default: return 'placeholder'
+  }
+}
+
+const maybeRecordAttempt = async (targetFileUri: string): Promise<void> => {
+  if (!app) {
+    return
+  }
+
+  const state = app.getState<ProofFlowState>().data
+  const file = state.files[targetFileUri]
+  const dag = file?.dag
+  if (!dag) {
+    return
+  }
+
+  const nodeId = state.ui.cursorNodeId ?? state.ui.selectedNodeId
+  if (!nodeId) {
+    return
+  }
+
+  const node = dag.nodes[nodeId]
+  if (!node || node.status.kind === 'in_progress') {
+    return
+  }
+
+  const fingerprint = [
+    node.status.kind,
+    node.status.errorCategory ?? '',
+    node.status.errorMessage ?? ''
+  ].join('|')
+  const key = `${targetFileUri}:${nodeId}`
+  if (attemptFingerprints.get(key) === fingerprint) {
+    return
+  }
+
+  attemptFingerprints.set(key, fingerprint)
+  await actSafely('attempt_record', {
+    fileUri: targetFileUri,
+    nodeId,
+    tactic: `auto:${node.kind}`,
+    tacticKey: node.kind,
+    result: toAttemptResult(node.status.kind),
+    contextErrorCategory: node.status.errorCategory,
+    errorMessage: node.status.errorMessage,
+    durationMs: null
+  })
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   let readyApp: App
 
@@ -239,15 +298,17 @@ export async function activate(context: vscode.ExtensionContext) {
       return
     }
 
-    await actSafely('dag_sync', {
-      fileUri: document.uri.toString()
-    })
+    const fileUri = document.uri.toString()
+    await actSafely('dag_sync', { fileUri })
+    await maybeRecordAttempt(fileUri)
   })
 
   const onDiagnosticsChange = vscode.languages.onDidChangeDiagnostics(async (event) => {
     const leanUris = event.uris.filter((uri) => isLeanUri(uri))
     for (const uri of leanUris) {
-      await actSafely('dag_sync', { fileUri: uri.toString() })
+      const fileUri = uri.toString()
+      await actSafely('dag_sync', { fileUri })
+      await maybeRecordAttempt(fileUri)
     }
   })
 
@@ -299,9 +360,11 @@ export async function deactivate() {
   panelController = null
 
   if (!app) {
+    attemptFingerprints.clear()
     return
   }
 
   await app.dispose()
   app = null
+  attemptFingerprints.clear()
 }

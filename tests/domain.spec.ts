@@ -170,4 +170,118 @@ describe('ProofFlow domain actions', () => {
     state = app.getState<ProofFlowState>()
     expect(state.data.ui.zoom).toBe(0.1)
   })
+
+  it('attempt.record applies host-provided history and patterns patch', async () => {
+    const fileUri = 'file:///proof.lean'
+    const app = await createApp({
+      'proof_flow.attempt.record': async () => [
+        {
+          op: 'set',
+          path: 'history',
+          value: {
+            version: '0.2.0',
+            files: {
+              [fileUri]: {
+                fileUri,
+                nodes: {},
+                totalAttempts: 1,
+                updatedAt: 1
+              }
+            }
+          }
+        },
+        {
+          op: 'set',
+          path: 'patterns',
+          value: {
+            version: '0.3.0',
+            entries: {},
+            totalAttempts: 1,
+            updatedAt: 1
+          }
+        }
+      ]
+    })
+
+    await app.act('attempt_record', {
+      fileUri,
+      nodeId: 'root',
+      tactic: 'simp',
+      tacticKey: 'simp',
+      result: 'error',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: 'simp failed',
+      durationMs: 10
+    }).done()
+
+    const state = app.getState<ProofFlowState>()
+    expect(state.data.history.files[fileUri]?.totalAttempts).toBe(1)
+    expect(state.data.patterns.totalAttempts).toBe(1)
+  })
+
+  it('history.clear and patterns.reset clear accumulated state', async () => {
+    const fileUri = 'file:///proof.lean'
+    const app = await createApp({
+      'proof_flow.attempt.record': async () => [
+        {
+          op: 'set',
+          path: 'history',
+          value: {
+            version: '0.2.0',
+            files: {
+              [fileUri]: {
+                fileUri,
+                nodes: {},
+                totalAttempts: 2,
+                updatedAt: 2
+              }
+            }
+          }
+        },
+        {
+          op: 'set',
+          path: 'patterns',
+          value: {
+            version: '0.3.0',
+            entries: {
+              key: {
+                key: 'OTHER:simp',
+                errorCategory: 'OTHER',
+                tacticKey: 'simp',
+                successCount: 0,
+                failureCount: 2,
+                score: 0,
+                lastUpdated: 2,
+                dagFingerprint: null,
+                dagClusterId: null,
+                goalSignature: null
+              }
+            },
+            totalAttempts: 2,
+            updatedAt: 2
+          }
+        }
+      ]
+    })
+
+    await app.act('attempt_record', {
+      fileUri,
+      nodeId: 'root',
+      tactic: 'simp',
+      tacticKey: 'simp',
+      result: 'error',
+      contextErrorCategory: 'OTHER',
+      errorMessage: 'failed',
+      durationMs: 20
+    }).done()
+
+    await app.act('history_clear').done()
+    await app.act('patterns_reset').done()
+
+    const state = app.getState<ProofFlowState>()
+    expect(state.data.history.files).toEqual({})
+    expect(state.data.patterns.entries).toEqual({})
+    expect(state.data.patterns.totalAttempts).toBe(0)
+    expect(state.data.patterns.updatedAt).toBeNull()
+  })
 })

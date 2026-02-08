@@ -37,8 +37,15 @@ const initialProjectionState = (): ProjectionState => ({
   },
   activeDag: null,
   summaryMetrics: null,
+  attemptOverview: {
+    totalAttempts: 0,
+    fileAttempts: 0,
+    selectedNodeAttempts: 0
+  },
   nodes: [],
-  selectedNode: null
+  selectedNode: null,
+  selectedNodeHistory: null,
+  patternInsights: []
 })
 
 const initialStateForHtml = (state: ProjectionState | null): string => {
@@ -334,6 +341,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
     const updateSummary = () => {
       const metrics = state.summaryMetrics;
+      const attempts = state.attemptOverview || { totalAttempts: 0, fileAttempts: 0, selectedNodeAttempts: 0 };
       const total = metrics ? metrics.totalNodes : 0;
       summaryEl.innerHTML = [
         '<span class="chip">Total: ' + total + '</span>',
@@ -342,7 +350,10 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         '<span class="chip">Errors: ' + (metrics ? metrics.errorCount : 0) + '</span>',
         '<span class="chip">Sorry: ' + (metrics ? metrics.sorryCount : 0) + '</span>',
         '<span class="chip">In-Progress: ' + (metrics ? metrics.inProgressCount : 0) + '</span>',
-        '<span class="chip">Depth: ' + (metrics ? metrics.maxDepth : 0) + '</span>'
+        '<span class="chip">Depth: ' + (metrics ? metrics.maxDepth : 0) + '</span>',
+        '<span class="chip">Attempts(total/file/node): '
+          + attempts.totalAttempts + '/' + attempts.fileAttempts + '/' + attempts.selectedNodeAttempts
+          + '</span>'
       ].join('');
 
       activeFileEl.textContent = state.ui.activeFileUri
@@ -396,6 +407,45 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         return;
       }
 
+      const history = state.selectedNodeHistory;
+      const historyBlock = history
+        ? ''
+          + '<div class="meta" style="margin-top:8px;">Attempts: '
+          + history.totalAttempts
+          + ' · Streak: ' + history.currentStreak
+          + ' · Last: ' + (history.lastResult || 'none')
+          + '</div>'
+          + (history.lastErrorCategory
+            ? '<div class="meta">Last Error Category: ' + escapeHtml(history.lastErrorCategory) + '</div>'
+            : '')
+          + (history.recentAttempts && history.recentAttempts.length > 0
+            ? '<pre class="meta">Recent Attempts:\\n'
+              + history.recentAttempts
+                .map((attempt) => {
+                  const category = attempt.errorCategory ? ' [' + attempt.errorCategory + ']' : '';
+                  return '- ' + attempt.tacticKey + ' -> ' + attempt.result + category;
+                })
+                .join('\\n')
+              + '</pre>'
+            : '')
+        : '<div class="meta" style="margin-top:8px;">No attempt history for this node.</div>';
+
+      const patternInsights = Array.isArray(state.patternInsights) ? state.patternInsights : [];
+      const patternBlock = patternInsights.length > 0
+        ? '<pre class="meta">Pattern Insights:\\n'
+          + patternInsights
+            .slice(0, 3)
+            .map((entry) => {
+              return '- ' + entry.tacticKey
+                + ' @ ' + entry.errorCategory
+                + ' => success ' + entry.successCount
+                + ', fail ' + entry.failureCount
+                + ', score ' + Number(entry.score || 0).toFixed(2);
+            })
+            .join('\\n')
+          + '</pre>'
+        : '<div class="meta">No pattern insights yet.</div>';
+
       selectedEl.innerHTML = ''
         + '<div><strong>' + escapeHtml(selected.id) + '</strong></div>'
         + '<div class="meta">' + escapeHtml(selected.kind) + ' · '
@@ -403,7 +453,9 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         + selected.endLine + ':' + selected.endCol + '</div>'
         + '<div class="status ' + statusClass(selected.statusKind) + '">' + escapeHtml(selected.statusKind) + '</div>'
         + (selected.errorCategory ? '<div class="meta">Category: ' + escapeHtml(selected.errorCategory) + '</div>' : '')
-        + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '');
+        + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '')
+        + historyBlock
+        + patternBlock;
     };
 
     const render = ({ resetScroll = false } = {}) => {

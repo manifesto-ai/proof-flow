@@ -80,53 +80,176 @@ const splitSegments = (path: string): string[] => (
   path.split('.').filter((segment) => segment.length > 0)
 )
 
-const resolveFilesPath = (
+const findLongestMatchingKey = (
+  object: Record<string, unknown>,
+  rest: string
+): string | null => {
+  const candidates = Object.keys(object).sort((a, b) => b.length - a.length)
+  const matched = candidates.find((candidate) => (
+    rest === candidate || rest.startsWith(`${candidate}.`)
+  ))
+  return matched ?? null
+}
+
+const dynamicKeyDelimiters = (path: string[]): string[] | null => {
+  if (path.length === 1 && path[0] === 'files') {
+    return ['fileUri', 'dag', 'lastSyncedAt', 'nodes', 'totalAttempts', 'updatedAt']
+  }
+
+  if (path.length === 2 && path[0] === 'history' && path[1] === 'files') {
+    return ['fileUri', 'nodes', 'totalAttempts', 'updatedAt']
+  }
+
+  if (
+    path.length === 4
+    && path[0] === 'history'
+    && path[1] === 'files'
+    && path[3] === 'nodes'
+  ) {
+    return [
+      'nodeId',
+      'attempts',
+      'currentStreak',
+      'totalAttempts',
+      'lastAttemptAt',
+      'lastSuccessAt',
+      'lastFailureAt'
+    ]
+  }
+
+  if (
+    path.length === 6
+    && path[0] === 'history'
+    && path[1] === 'files'
+    && path[3] === 'nodes'
+    && path[5] === 'attempts'
+  ) {
+    return [
+      'id',
+      'fileUri',
+      'nodeId',
+      'timestamp',
+      'tactic',
+      'tacticKey',
+      'result',
+      'contextErrorCategory',
+      'errorMessage',
+      'durationMs'
+    ]
+  }
+
+  if (path.length === 2 && path[0] === 'patterns' && path[1] === 'entries') {
+    return [
+      'key',
+      'errorCategory',
+      'tacticKey',
+      'successCount',
+      'failureCount',
+      'score',
+      'lastUpdated',
+      'dagFingerprint',
+      'dagClusterId',
+      'goalSignature'
+    ]
+  }
+
+  return null
+}
+
+const extractDynamicKeyFromRest = (
+  rest: string,
+  delimiters: string[]
+): { key: string; nextRest: string } => {
+  const candidateIndexes = delimiters
+    .map((delimiter) => {
+      const marker = `.${delimiter}`
+      const index = rest.indexOf(marker)
+      return index > 0 ? index : Number.POSITIVE_INFINITY
+    })
+    .filter((index) => Number.isFinite(index))
+
+  const markerIndex = candidateIndexes.length > 0
+    ? Math.min(...candidateIndexes)
+    : -1
+
+  if (markerIndex <= 0) {
+    return { key: rest, nextRest: '' }
+  }
+
+  return {
+    key: rest.slice(0, markerIndex),
+    nextRest: rest.slice(markerIndex + 1)
+  }
+}
+
+const splitHead = (rest: string): { head: string; tail: string } => {
+  const firstDot = rest.indexOf('.')
+  if (firstDot < 0) {
+    return { head: rest, tail: '' }
+  }
+
+  return {
+    head: rest.slice(0, firstDot),
+    tail: rest.slice(firstDot + 1)
+  }
+}
+
+const resolveDataPath = (
   snapshot: Snapshot,
   rawSubPath: string
 ): string[] => {
-  if (rawSubPath === 'files') {
-    return ['data', 'files']
+  if (!rawSubPath) {
+    return ['data']
   }
 
-  if (!rawSubPath.startsWith('files.')) {
-    return ['data', ...splitSegments(rawSubPath)]
-  }
+  const segments: string[] = ['data']
+  const data = isRecord(snapshot.data) ? snapshot.data : {}
+  let current: Record<string, unknown> | null = data
+  let rest = rawSubPath
+  let logicalPath: string[] = []
 
-  const rest = rawSubPath.slice('files.'.length)
-  if (rest.length === 0) {
-    return ['data', 'files']
-  }
+  while (rest.length > 0) {
+    let nextKey: string
+    let nextRest = ''
 
-  const data = isRecord(snapshot.data) ? snapshot.data : null
-  const files = data && isRecord(data.files) ? data.files : null
-
-  if (files) {
-    const candidates = Object.keys(files).sort((a, b) => b.length - a.length)
-    const key = candidates.find((candidate) => (
-      rest === candidate || rest.startsWith(`${candidate}.`)
-    ))
-
-    if (key) {
-      const suffix = rest.slice(key.length)
-      const suffixSegments = suffix.startsWith('.')
-        ? splitSegments(suffix.slice(1))
-        : []
-      return ['data', 'files', key, ...suffixSegments]
+    const existing = current ? findLongestMatchingKey(current, rest) : null
+    if (existing) {
+      nextKey = existing
+      nextRest = rest === existing ? '' : rest.slice(existing.length + 1)
     }
+    else {
+      const delimiters = dynamicKeyDelimiters(logicalPath)
+      if (delimiters) {
+        const extracted = extractDynamicKeyFromRest(rest, delimiters)
+        nextKey = extracted.key
+        nextRest = extracted.nextRest
+      }
+      else {
+        const head = splitHead(rest)
+        nextKey = head.head
+        nextRest = head.tail
+      }
+    }
+
+    if (!nextKey) {
+      break
+    }
+
+    segments.push(nextKey)
+    logicalPath = [...logicalPath, nextKey]
+    rest = nextRest
+    const nextObject: unknown = current ? current[nextKey] : null
+    current = isRecord(nextObject) ? nextObject : null
   }
 
-  // Fall back to treating the remainder as a single key for first-write cases.
-  return ['data', 'files', rest]
+  return segments
 }
 
 const resolvePatchSegments = (snapshot: Snapshot, path: string): string[] => {
   const { root, subPath } = splitPatchPath(path)
 
   if (root === 'data') {
-    if (!subPath) {
-      return ['data']
-    }
-    return resolveFilesPath(snapshot, subPath)
+    return resolveDataPath(snapshot, subPath)
   }
 
   if (!subPath) {

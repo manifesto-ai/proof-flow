@@ -6,6 +6,7 @@ import {
   createEditorGetCursorEffect,
   resolveNodeIdAtCursor
 } from '../packages/host/src/effects/cursor-get.js'
+import { createAttemptRecordEffect } from '../packages/host/src/effects/attempt-record.js'
 
 const fileUri = 'file:///proof.lean'
 
@@ -244,5 +245,137 @@ describe('Host effects', () => {
       position: { line: 50, column: 1 }
     })
     expect(nodeId).toBeNull()
+  })
+
+  it('attempt.record creates history and patterns patches', async () => {
+    const effect = createAttemptRecordEffect({
+      now: () => 1700000000000
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'simp',
+      tacticKey: 'simp',
+      result: 'error',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: 'simp failed',
+      durationMs: 24
+    }, {
+      snapshot: { data: {} }
+    })
+
+    const historyPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'history')
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+
+    expect(historyPatch).toBeDefined()
+    expect(patternsPatch).toBeDefined()
+
+    const history = (historyPatch as { value: any }).value
+    expect(history.version).toBe('0.2.0')
+    expect(history.files[fileUri].totalAttempts).toBe(1)
+    expect(history.files[fileUri].nodes.child.currentStreak).toBe(1)
+    expect(history.files[fileUri].nodes.child.lastFailureAt).toBe(1700000000000)
+
+    const patterns = (patternsPatch as { value: any }).value
+    const patternKey = 'TACTIC_FAILED:simp'
+    expect(patterns.version).toBe('0.3.0')
+    expect(patterns.totalAttempts).toBe(1)
+    expect(patterns.entries[patternKey].failureCount).toBe(1)
+    expect(patterns.entries[patternKey].successCount).toBe(0)
+    expect(patterns.entries[patternKey].score).toBe(0)
+  })
+
+  it('attempt.record appends attempts and resets streak on success', async () => {
+    const effect = createAttemptRecordEffect({
+      now: () => 1700000000010
+    })
+
+    const existingSnapshot = {
+      history: {
+        version: '0.2.0',
+        files: {
+          [fileUri]: {
+            fileUri,
+            nodes: {
+              child: {
+                nodeId: 'child',
+                attempts: {
+                  '1700000000000:1': {
+                    id: '1700000000000:1',
+                    fileUri,
+                    nodeId: 'child',
+                    timestamp: 1700000000000,
+                    tactic: 'simp',
+                    tacticKey: 'simp',
+                    result: 'error',
+                    contextErrorCategory: 'TACTIC_FAILED',
+                    errorMessage: 'simp failed',
+                    durationMs: 10
+                  }
+                },
+                currentStreak: 1,
+                totalAttempts: 1,
+                lastAttemptAt: 1700000000000,
+                lastSuccessAt: null,
+                lastFailureAt: 1700000000000
+              }
+            },
+            totalAttempts: 1,
+            updatedAt: 1700000000000
+          }
+        }
+      },
+      patterns: {
+        version: '0.3.0',
+        entries: {
+          'TACTIC_FAILED:simp': {
+            key: 'TACTIC_FAILED:simp',
+            errorCategory: 'TACTIC_FAILED',
+            tacticKey: 'simp',
+            successCount: 0,
+            failureCount: 1,
+            score: 0,
+            lastUpdated: 1700000000000,
+            dagFingerprint: null,
+            dagClusterId: null,
+            goalSignature: null
+          }
+        },
+        totalAttempts: 1,
+        updatedAt: 1700000000000
+      }
+    }
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'exact?',
+      tacticKey: 'exact',
+      result: 'success',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: null,
+      durationMs: 12
+    }, {
+      snapshot: { data: existingSnapshot }
+    })
+
+    const historyPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'history')
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+
+    const history = (historyPatch as { value: any }).value
+    const nodeHistory = history.files[fileUri].nodes.child
+    expect(nodeHistory.totalAttempts).toBe(2)
+    expect(nodeHistory.currentStreak).toBe(0)
+    expect(nodeHistory.lastAttemptAt).toBe(1700000000010)
+    expect(nodeHistory.lastSuccessAt).toBe(1700000000010)
+    expect(nodeHistory.lastFailureAt).toBe(1700000000000)
+
+    const patternKey = 'TACTIC_FAILED:exact'
+    const patterns = (patternsPatch as { value: any }).value
+    expect(patterns.totalAttempts).toBe(2)
+    expect(patterns.entries[patternKey].successCount).toBe(1)
+    expect(patterns.entries[patternKey].failureCount).toBe(0)
+    expect(patterns.entries[patternKey].score).toBe(1)
   })
 })

@@ -81,16 +81,59 @@ export type UiState = {
   collapseResolved: boolean
 }
 
-export type JsonValue = string | number | boolean | null
+export type AttemptResult = 'success' | 'error' | 'timeout' | 'placeholder'
+
+export type AttemptRecord = {
+  id: string
+  fileUri: string
+  nodeId: string
+  timestamp: number
+  tactic: string
+  tacticKey: string
+  result: AttemptResult
+  contextErrorCategory: ErrorCategory | null
+  errorMessage: string | null
+  durationMs: number | null
+}
+
+export type NodeHistory = {
+  nodeId: string
+  attempts: Record<string, AttemptRecord>
+  currentStreak: number
+  totalAttempts: number
+  lastAttemptAt: number | null
+  lastSuccessAt: number | null
+  lastFailureAt: number | null
+}
+
+export type FileHistory = {
+  fileUri: string
+  nodes: Record<string, NodeHistory>
+  totalAttempts: number
+  updatedAt: number | null
+}
 
 export type HistoryState = {
   version: string
-  files: Record<string, JsonValue>
+  files: Record<string, FileHistory>
+}
+
+export type PatternEntry = {
+  key: string
+  errorCategory: ErrorCategory
+  tacticKey: string
+  successCount: number
+  failureCount: number
+  score: number
+  lastUpdated: number
+  dagFingerprint: string | null
+  dagClusterId: string | null
+  goalSignature: string | null
 }
 
 export type PatternsState = {
   version: string
-  entries: Record<string, JsonValue>
+  entries: Record<string, PatternEntry>
   totalAttempts: number
   updatedAt: number | null
 }

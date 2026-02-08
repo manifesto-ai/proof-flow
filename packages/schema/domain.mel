@@ -74,16 +74,59 @@ domain ProofFlow {
     collapseResolved: boolean
   }
 
-  type JsonValue = string | number | boolean | null
+  type AttemptResult = "success" | "error" | "timeout" | "placeholder"
+
+  type AttemptRecord = {
+    id: string,
+    fileUri: string,
+    nodeId: string,
+    timestamp: number,
+    tactic: string,
+    tacticKey: string,
+    result: AttemptResult,
+    contextErrorCategory: ErrorCategory | null,
+    errorMessage: string | null,
+    durationMs: number | null
+  }
+
+  type NodeHistory = {
+    nodeId: string,
+    attempts: Record<string, AttemptRecord>,
+    currentStreak: number,
+    totalAttempts: number,
+    lastAttemptAt: number | null,
+    lastSuccessAt: number | null,
+    lastFailureAt: number | null
+  }
+
+  type FileHistory = {
+    fileUri: string,
+    nodes: Record<string, NodeHistory>,
+    totalAttempts: number,
+    updatedAt: number | null
+  }
 
   type HistoryState = {
     version: string,
-    files: Record<string, JsonValue>
+    files: Record<string, FileHistory>
+  }
+
+  type PatternEntry = {
+    key: string,
+    errorCategory: ErrorCategory,
+    tacticKey: string,
+    successCount: number,
+    failureCount: number,
+    score: number,
+    lastUpdated: number,
+    dagFingerprint: string | null,
+    dagClusterId: string | null,
+    goalSignature: string | null
   }
 
   type PatternsState = {
     version: string,
-    entries: Record<string, JsonValue>,
+    entries: Record<string, PatternEntry>,
     totalAttempts: number,
     updatedAt: number | null
   }
@@ -277,6 +320,50 @@ domain ProofFlow {
         layout: uiLayout,
         zoom: uiZoom,
         collapseResolved: not(uiCollapseResolved)
+      }
+    }
+  }
+
+  action attempt_record(
+    fileUri: string,
+    nodeId: string,
+    tactic: string,
+    tacticKey: string,
+    result: AttemptResult,
+    contextErrorCategory: ErrorCategory | null,
+    errorMessage: string | null,
+    durationMs: number | null
+  ) {
+    onceIntent {
+      effect proof_flow.attempt.record({
+        fileUri: fileUri,
+        nodeId: nodeId,
+        tactic: tactic,
+        tacticKey: tacticKey,
+        result: result,
+        contextErrorCategory: contextErrorCategory,
+        errorMessage: errorMessage,
+        durationMs: durationMs
+      })
+    }
+  }
+
+  action history_clear() {
+    when true {
+      patch history = {
+        version: history.version,
+        files: {}
+      }
+    }
+  }
+
+  action patterns_reset() {
+    when true {
+      patch patterns = {
+        version: patterns.version,
+        entries: {},
+        totalAttempts: 0,
+        updatedAt: null
       }
     }
   }

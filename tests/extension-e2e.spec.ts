@@ -121,6 +121,9 @@ const env = vi.hoisted(() => {
       if (type === 'panel_toggle') {
         fakeState.data.ui.panelVisible = !fakeState.data.ui.panelVisible
       }
+      if (type === 'cursor_sync') {
+        fakeState.data.ui.cursorNodeId = (input as { resolvedNodeId?: string | null })?.resolvedNodeId ?? null
+      }
       return {
         done: async () => {}
       }
@@ -134,7 +137,7 @@ const env = vi.hoisted(() => {
 
   const createProofFlowApp = vi.fn(() => fakeApp as any)
   const createProofFlowWorld = vi.fn(async () => ({ store: {} }))
-  const resolveNodeIdAtCursor = vi.fn(() => 'resolved-node')
+  const resolveNodeIdAtCursor = vi.fn(() => 'root')
 
   const window = {
     activeTextEditor: {
@@ -388,12 +391,18 @@ describe('Extension E2E flow', () => {
       ]
     })
 
+    await env.fireSave({
+      languageId: 'lean',
+      uri: env.leanUri
+    })
+
     const calls = env.getActCalls()
     const types = calls.map((call) => call.type)
 
     expect(types.filter((type) => type === 'file_activate').length).toBeGreaterThanOrEqual(2)
     expect(types.filter((type) => type === 'dag_sync').length).toBeGreaterThanOrEqual(4)
     expect(types).toContain('cursor_sync')
+    expect(types).toContain('attempt_record')
 
     const cursorSyncCall = calls.findLast((call) => call.type === 'cursor_sync')
     expect(cursorSyncCall?.input).toMatchObject({

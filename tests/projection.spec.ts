@@ -41,6 +41,110 @@ const makeState = (overrides?: Partial<AppState<unknown>>): AppState<unknown> =>
 describe('Projection selector', () => {
   it('projects active dag and sorts nodes by source position', () => {
     const state = makeState({
+      data: {
+        ...baseData(),
+        history: {
+          version: '0.2.0',
+          files: {
+            'file:///proof.lean': {
+              fileUri: 'file:///proof.lean',
+              nodes: {
+                child: {
+                  nodeId: 'child',
+                  attempts: {
+                    a1: {
+                      id: 'a1',
+                      fileUri: 'file:///proof.lean',
+                      nodeId: 'child',
+                      timestamp: 100,
+                      tactic: 'simp',
+                      tacticKey: 'simp',
+                      result: 'error',
+                      contextErrorCategory: 'OTHER',
+                      errorMessage: 'oops',
+                      durationMs: 10
+                    },
+                    a2: {
+                      id: 'a2',
+                      fileUri: 'file:///proof.lean',
+                      nodeId: 'child',
+                      timestamp: 120,
+                      tactic: 'exact?',
+                      tacticKey: 'exact',
+                      result: 'success',
+                      contextErrorCategory: 'OTHER',
+                      errorMessage: null,
+                      durationMs: 8
+                    },
+                    a3: {
+                      id: 'a3',
+                      fileUri: 'file:///proof.lean',
+                      nodeId: 'child',
+                      timestamp: 140,
+                      tactic: 'aesop',
+                      tacticKey: 'aesop',
+                      result: 'error',
+                      contextErrorCategory: 'OTHER',
+                      errorMessage: 'still failing',
+                      durationMs: 12
+                    }
+                  },
+                  currentStreak: 2,
+                  totalAttempts: 3,
+                  lastAttemptAt: 140,
+                  lastSuccessAt: 120,
+                  lastFailureAt: 140
+                }
+              },
+              totalAttempts: 3,
+              updatedAt: 140
+            }
+          }
+        },
+        patterns: {
+          version: '0.3.0',
+          entries: {
+            'OTHER:aesop': {
+              key: 'OTHER:aesop',
+              errorCategory: 'OTHER',
+              tacticKey: 'aesop',
+              successCount: 1,
+              failureCount: 4,
+              score: 0.2,
+              lastUpdated: 140,
+              dagFingerprint: null,
+              dagClusterId: null,
+              goalSignature: null
+            },
+            'OTHER:exact': {
+              key: 'OTHER:exact',
+              errorCategory: 'OTHER',
+              tacticKey: 'exact',
+              successCount: 2,
+              failureCount: 1,
+              score: 0.66,
+              lastUpdated: 130,
+              dagFingerprint: null,
+              dagClusterId: null,
+              goalSignature: null
+            },
+            'TACTIC_FAILED:simp': {
+              key: 'TACTIC_FAILED:simp',
+              errorCategory: 'TACTIC_FAILED',
+              tacticKey: 'simp',
+              successCount: 0,
+              failureCount: 5,
+              score: 0,
+              lastUpdated: 120,
+              dagFingerprint: null,
+              dagClusterId: null,
+              goalSignature: null
+            }
+          },
+          totalAttempts: 8,
+          updatedAt: 140
+        }
+      },
       computed: {
         'computed.activeDag': {
           fileUri: 'file:///proof.lean',
@@ -113,6 +217,16 @@ describe('Projection selector', () => {
     expect(projection.nodes.map((node) => node.id)).toEqual(['root', 'mid', 'child'])
     expect(projection.selectedNode?.id).toBe('child')
     expect(projection.summaryMetrics?.errorCount).toBe(1)
+    expect(projection.attemptOverview.totalAttempts).toBe(8)
+    expect(projection.attemptOverview.fileAttempts).toBe(3)
+    expect(projection.attemptOverview.selectedNodeAttempts).toBe(3)
+    expect(projection.selectedNodeHistory?.currentStreak).toBe(2)
+    expect(projection.selectedNodeHistory?.lastResult).toBe('error')
+    expect(projection.selectedNodeHistory?.recentAttempts[0]?.id).toBe('a3')
+    expect(projection.patternInsights.map((entry) => entry.key)).toEqual([
+      'OTHER:aesop',
+      'OTHER:exact'
+    ])
   })
 
   it('returns safe null projection when computed dag is absent', () => {
@@ -120,7 +234,14 @@ describe('Projection selector', () => {
 
     expect(projection.activeDag).toBeNull()
     expect(projection.summaryMetrics).toBeNull()
+    expect(projection.attemptOverview).toEqual({
+      totalAttempts: 0,
+      fileAttempts: 0,
+      selectedNodeAttempts: 0
+    })
     expect(projection.nodes).toEqual([])
     expect(projection.selectedNode).toBeNull()
+    expect(projection.selectedNodeHistory).toBeNull()
+    expect(projection.patternInsights).toEqual([])
   })
 })

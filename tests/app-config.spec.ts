@@ -23,7 +23,8 @@ describe('ProofFlow app config', () => {
       schema,
       effects: {
         'proof_flow.dag.extract': async () => [],
-        'proof_flow.editor.reveal': async () => []
+        'proof_flow.editor.reveal': async () => [],
+        'proof_flow.attempt.record': async () => []
       }
     })
 
