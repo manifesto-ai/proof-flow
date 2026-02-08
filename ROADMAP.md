@@ -1,6 +1,6 @@
 # ProofFlow Roadmap
 
-## Status Snapshot (2026-02-07)
+## Status Snapshot (2026-02-08)
 - ✅ Workspace scaffold (pnpm + ESM + TS configs)
 - ✅ MEL domain (compiler-compatible) authored
 - ✅ Docs updated for underscore action/effect names
@@ -11,6 +11,7 @@
 - ✅ Host effect implementation (`dag.extract` parser + validation pipeline)
 - ✅ Lineage/replay invariants test baseline
 - ✅ Projection-only UI enhanced (WebView projection + search/filter/sort + virtual list)
+- ✅ VS Code extension E2E flow test baseline (event → app.act / command toggle)
 
 ## Checkpoints
 
@@ -39,6 +40,7 @@
 - [x] Core intent flow tests (dag_sync, file_activate, node_select, ui toggles)
 - [x] Effect handler tests (host → patches)
 - [x] World lineage/replay tests (determinism + storage integrity)
+- [x] VS Code extension E2E flow tests (activate/events/command/deactivate)
 
 ### 5. Projection-Only UI (최후순위)
 - [x] Read-only projection from `Snapshot.data` and `Snapshot.computed`
