@@ -167,6 +167,9 @@ const env = vi.hoisted(() => {
 
   const workspace = {
     workspaceFolders: [{ uri: makeUri('file:///workspace') }],
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(() => '')
+    })),
     fs: {
       readFile: vi.fn(async () => new TextEncoder().encode('domain ProofFlow { state { v: number = 1 } }'))
     },
@@ -199,6 +202,10 @@ const env = vi.hoisted(() => {
     window,
     workspace,
     languages,
+    extensions: {
+      all: [],
+      getExtension: vi.fn(() => undefined)
+    },
     commands: {
       registerCommand
     },
@@ -262,6 +269,7 @@ const env = vi.hoisted(() => {
     window.showErrorMessage.mockClear()
     window.showInformationMessage.mockClear()
     languages.getDiagnostics.mockClear()
+    vscodeMock.extensions.getExtension.mockClear()
   }
 
   const fire = async (list: Array<(event: unknown) => unknown>, event: unknown) => {

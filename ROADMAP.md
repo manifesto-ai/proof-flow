@@ -32,10 +32,11 @@
 - ✅ v0.4.2 closed-loop baseline (`attempt_apply` effect + panel apply + post-apply re-suggest)
 - ✅ v0.4.2 Suggestion closed loop integration test (`tests/suggestion-closed-loop.spec.ts`)
 - ✅ v0.4.3 Start-Here triage (priority queue + panel + tests)
-- ⚠️ v0.4.1 Goal fidelity spike executed (`reports/goal-fidelity-report.json`: 0.0% goal coverage)
+- ✅ v0.4.1 P0 recovery batch 완료 (schema decouple + readiness gating + probe diagnostics + spike guardrail)
+- ⚠️ Goal coverage는 declaration fallback 기반으로 회복 (`66.7%`), stable Lean goal source는 추가 강화 필요
 
 ## Priority Queue
-1. P0: Goal fidelity recovery (`goal != null` coverage from real Lean workflows)
+1. P0: stable Lean goal source 실효성 강화 (fallback 의존도 축소)
 2. P1: v0.5 Recommendation Quality + State Hygiene
 3. P2: v0.6 Performance/CI Hardening
 
@@ -116,10 +117,11 @@
 - [x] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API: `$/lean/plainGoal`, `$/lean/plainTermGoal`) 직접 연동
 - [x] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
 - [x] 리포트: 정확도/누락 케이스/실패 패턴 문서화 (`docs/GOAL-FIDELITY-SPIKE.md`)
-- [ ] P0 복구 1: extension schema 로딩 경로를 `context.extensionUri` 기준으로 전환 (workspace root 결합 제거)
-- [ ] P0 복구 2: Lean 준비 상태 게이팅(ready/sync 안정화) 후 goal snapshot 수집
-- [ ] P0 복구 3: goal source probe 실패 원인/코드 로깅 및 snapshot에 원인 필드 추가
-- [ ] P0 복구 4: spike CI 가드레일(최소 1 fixture에서 `withGoal > 0`) 추가
+- [x] P0 복구 1: extension schema 로딩 경로를 `context.extensionUri` 기준으로 전환 (workspace root 결합 제거)
+- [x] P0 복구 2: Lean 준비 상태 게이팅(ready/sync 안정화) 후 goal snapshot 수집
+- [x] P0 복구 3: goal source probe 실패 원인/코드 로깅 및 snapshot에 원인 필드 추가
+- [x] P0 복구 4: spike CI 가드레일(최소 1 fixture에서 `withGoal > 0`) 추가
+- [ ] P0 후속 1: stable source(`$/lean/plainGoal`) 성공률 지표화 및 fallback 의존도 경보
 
 ### 11. v0.4.2 Suggestion Closed Loop (P0)
 - [x] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가

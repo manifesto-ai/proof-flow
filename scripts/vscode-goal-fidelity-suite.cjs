@@ -6,8 +6,8 @@ const vscode = require('vscode')
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const sampleFiles = [
-  'samples/goal-fidelity/GoalFidelitySamples/Basic.lean',
-  'samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean'
+  'GoalFidelitySamples/Basic.lean',
+  'GoalFidelitySamples/MathlibSample.lean'
 ]
 
 const findProofFlowExtension = () => {
@@ -25,7 +25,14 @@ const normalizeSnapshot = (snapshot, fileUri) => {
       withGoal: 0,
       ratio: 0,
       percent: '0.0',
-      sources: null
+      sources: null,
+      readiness: {
+        status: 'warming',
+        waitedMs: 0,
+        leanClientReady: false,
+        dagSynced: false,
+        lastSyncedAt: null
+      }
     }
   }
 
@@ -35,7 +42,14 @@ const normalizeSnapshot = (snapshot, fileUri) => {
     withGoal: Number(snapshot.withGoal || 0),
     ratio: Number(snapshot.ratio || 0),
     percent: String(snapshot.percent || '0.0'),
-    sources: snapshot.sources || null
+    sources: snapshot.sources || null,
+    readiness: snapshot.readiness || {
+      status: 'warming',
+      waitedMs: 0,
+      leanClientReady: false,
+      dagSynced: false,
+      lastSyncedAt: null
+    }
   }
 }
 
@@ -47,7 +61,7 @@ async function waitForCoverageSnapshot(timeoutMs) {
     latest = await vscode.commands.executeCommand('proof-flow.goalCoverageSnapshot')
     const normalized = normalizeSnapshot(latest, '')
 
-    if (normalized.totalNodes > 0) {
+    if (normalized.totalNodes > 0 && normalized.readiness.status !== 'warming') {
       return normalized
     }
 
@@ -94,6 +108,18 @@ async function run() {
     percent: (ratio * 100).toFixed(1),
     samples: results
   }
+
+  const hasGoalCoverage = results.some((entry) => entry.withGoal > 0)
+  assert.ok(
+    hasGoalCoverage,
+    `Expected at least one sample with goal coverage > 0. Got: ${JSON.stringify(results.map((entry) => ({
+      sample: entry.sample,
+      withGoal: entry.withGoal,
+      totalNodes: entry.totalNodes,
+      readiness: entry.readiness,
+      probeFailures: entry.sources?.probeFailures?.slice(0, 3) ?? []
+    })), null, 2)}`
+  )
 
   const reportPath = process.env.GOAL_FIDELITY_REPORT_PATH
     ? path.resolve(process.env.GOAL_FIDELITY_REPORT_PATH)

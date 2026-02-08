@@ -47,6 +47,7 @@ const LEAN_STABLE_GOAL_METHODS = [
 
 type GoalSourceStats = {
   stableHints: number
+  declarationHints: number
   diagnosticHints: number
   hoverHints: number
   apiHints: number
@@ -54,6 +55,23 @@ type GoalSourceStats = {
   stableMethodsUsed: string[]
   apiMethodsUsed: string[]
   commandsUsed: string[]
+  probeFailures: GoalProbeFailure[]
+  leanClientReady: boolean
+}
+
+type GoalProbeFailure = {
+  source: 'stable' | 'hover' | 'api' | 'command' | 'runtime'
+  method?: string
+  code: string
+  message: string
+}
+
+type GoalCoverageReadiness = {
+  status: 'ready' | 'warming' | 'timeout'
+  waitedMs: number
+  leanClientReady: boolean
+  dagSynced: boolean
+  lastSyncedAt: number | null
 }
 
 const goalSourceStatsByFileUri = new Map<string, GoalSourceStats>()
@@ -65,6 +83,7 @@ type GoalCoverageSnapshot = {
   ratio: number
   percent: string
   sources: GoalSourceStats | null
+  readiness: GoalCoverageReadiness
 }
 
 let cachedGoalCommands: string[] | undefined
@@ -85,6 +104,9 @@ const LEAN_API_METHOD_PATHS = [
 
 const LEAN_FEATURE_TIMEOUT_MS = 1000
 const LEAN_PROVIDER_RETRY_COOLDOWN_MS = 2000
+const GOAL_READINESS_TIMEOUT_MS = 12000
+const GOAL_READINESS_POLL_MS = 200
+const GOAL_PROBE_FAILURE_LIMIT = 12
 
 const toVscodeRange = (range: Range): vscode.Range => {
   const startLine = Math.max(range.startLine - 1, 0)
@@ -196,6 +218,47 @@ const normalizeFsPath = (value: string): string => {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized
 }
 
+const sleep = async (ms: number): Promise<void> => {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+const toErrorMessage = (error: unknown): string => (
+  error instanceof Error ? error.message : String(error)
+)
+
+const toProbeCode = (error: unknown): string => {
+  const record = asRecord(error)
+  const code = record?.code
+  if (typeof code === 'string' || typeof code === 'number') {
+    return String(code)
+  }
+
+  const message = toErrorMessage(error).toLowerCase()
+  if (message.includes('method not found')) {
+    return 'METHOD_NOT_FOUND'
+  }
+  if (message.includes('timed out') || message.includes('timeout')) {
+    return 'TIMEOUT'
+  }
+  if (message.includes('not ready') || message.includes('not initialized')) {
+    return 'NOT_READY'
+  }
+  if (message.includes('no active editor')) {
+    return 'NO_ACTIVE_EDITOR'
+  }
+  return 'UNKNOWN'
+}
+
+const pushProbeFailure = (
+  target: GoalProbeFailure[],
+  failure: GoalProbeFailure
+): void => {
+  if (target.length >= GOAL_PROBE_FAILURE_LIMIT) {
+    return
+  }
+  target.push(failure)
+}
+
 const isPathInside = (candidatePath: string, folderPath: string): boolean => {
   const candidate = normalizeFsPath(candidatePath)
   const folder = normalizeFsPath(folderPath).replace(/\/+$/, '')
@@ -232,6 +295,48 @@ const extractGoalHintsFromDiagnostics = (
   return hints
 }
 
+const extractGoalHintsFromDeclarations = (sourceText: string): LeanGoalHint[] => {
+  const hints: LeanGoalHint[] = []
+  const lines = sourceText.split(/\r?\n/)
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? ''
+    const trimmed = line.trim()
+    if (!/^(theorem|lemma)\b/.test(trimmed)) {
+      continue
+    }
+
+    const byIndex = trimmed.indexOf(':= by')
+    if (byIndex < 0) {
+      continue
+    }
+
+    const head = trimmed.slice(0, byIndex)
+    const goalSeparator = head.lastIndexOf(':')
+    if (goalSeparator < 0) {
+      continue
+    }
+
+    const goal = head.slice(goalSeparator + 1).trim()
+    if (goal.length === 0) {
+      continue
+    }
+
+    hints.push({
+      goal,
+      range: {
+        startLine: index + 1,
+        startCol: 0,
+        endLine: index + 1,
+        endCol: line.length
+      },
+      source: 'declaration'
+    })
+  }
+
+  return hints
+}
+
 const toHoverContentText = (content: vscode.MarkedString | vscode.MarkdownString): string => {
   if (typeof content === 'string') {
     return content
@@ -248,16 +353,17 @@ const toHoverContentText = (content: vscode.MarkedString | vscode.MarkdownString
 const extractGoalHintsFromHoverProvider = async (
   uri: vscode.Uri,
   diagnostics: readonly vscode.Diagnostic[]
-): Promise<LeanGoalHint[]> => {
+): Promise<{ hints: LeanGoalHint[]; failures: GoalProbeFailure[] }> => {
   const commandsApi = vscode.commands as typeof vscode.commands & {
     executeCommand?: (command: string, ...args: unknown[]) => Thenable<unknown>
   }
 
   if (typeof commandsApi.executeCommand !== 'function') {
-    return []
+    return { hints: [], failures: [] }
   }
 
   const hints: LeanGoalHint[] = []
+  const failures: GoalProbeFailure[] = []
   const seen = new Set<string>()
 
   for (const diagnostic of diagnostics.slice(0, 20)) {
@@ -305,12 +411,17 @@ const extractGoalHintsFromHoverProvider = async (
         }
       }
     }
-    catch {
-      // Ignore per-position hover failures and continue with other hints.
+    catch (error) {
+      pushProbeFailure(failures, {
+        source: 'hover',
+        method: 'vscode.executeHoverProvider',
+        code: toProbeCode(error),
+        message: toErrorMessage(error)
+      })
     }
   }
 
-  return hints
+  return { hints, failures }
 }
 
 const normalizeGoalHints = (raw: unknown, source: string): LeanGoalHint[] => {
@@ -743,14 +854,30 @@ const normalizePlainTermGoalResponse = (
 const loadGoalHintsFromLeanStableRequests = async (
   fileUri: string,
   diagnostics: readonly vscode.Diagnostic[]
-): Promise<{ hints: LeanGoalHint[]; methodsUsed: string[] }> => {
+): Promise<{
+  hints: LeanGoalHint[]
+  methodsUsed: string[]
+  failures: GoalProbeFailure[]
+  leanClientReady: boolean
+}> => {
   const leanClient = await resolveLeanClient(fileUri)
   if (!leanClient) {
-    return { hints: [], methodsUsed: [] }
+    return {
+      hints: [],
+      methodsUsed: [],
+      failures: [{
+        source: 'runtime',
+        method: 'resolveLeanClient',
+        code: 'LEAN_CLIENT_UNAVAILABLE',
+        message: 'Lean client is not ready for goal requests.'
+      }],
+      leanClientReady: false
+    }
   }
 
   const hints: LeanGoalHint[] = []
   const methodsUsed: string[] = []
+  const failures: GoalProbeFailure[] = []
   const positions = buildGoalPositions(fileUri, diagnostics)
   const maxPositions = 8
 
@@ -772,8 +899,13 @@ const loadGoalHintsFromLeanStableRequests = async (
         }
       }
     }
-    catch {
-      // Ignore method failures and keep collecting from other sources.
+    catch (error) {
+      pushProbeFailure(failures, {
+        source: 'stable',
+        method: '$/lean/plainGoal',
+        code: toProbeCode(error),
+        message: toErrorMessage(error)
+      })
     }
 
     try {
@@ -790,8 +922,13 @@ const loadGoalHintsFromLeanStableRequests = async (
         }
       }
     }
-    catch {
-      // Ignore method failures and keep collecting from other sources.
+    catch (error) {
+      pushProbeFailure(failures, {
+        source: 'stable',
+        method: '$/lean/plainTermGoal',
+        code: toProbeCode(error),
+        message: toErrorMessage(error)
+      })
     }
 
     if (hints.length >= 32) {
@@ -799,7 +936,7 @@ const loadGoalHintsFromLeanStableRequests = async (
     }
   }
 
-  return { hints, methodsUsed }
+  return { hints, methodsUsed, failures, leanClientReady: true }
 }
 
 const dedupeGoalHints = (hints: readonly LeanGoalHint[]): LeanGoalHint[] => {
@@ -889,14 +1026,28 @@ const buildLeanApiArgs = (
 const loadGoalHintsFromLeanExtensionApi = async (
   fileUri: string,
   diagnostics: readonly vscode.Diagnostic[]
-): Promise<{ hints: LeanGoalHint[]; methodsUsed: string[] }> => {
+): Promise<{
+  hints: LeanGoalHint[]
+  methodsUsed: string[]
+  failures: GoalProbeFailure[]
+}> => {
   const methods = await resolveLeanExtensionApiMethods()
   if (methods.length === 0) {
-    return { hints: [], methodsUsed: [] }
+    return {
+      hints: [],
+      methodsUsed: [],
+      failures: [{
+        source: 'api',
+        method: 'leanprover.lean4 exports',
+        code: 'API_METHODS_UNAVAILABLE',
+        message: 'No Lean extension API goal methods were discovered.'
+      }]
+    }
   }
 
   const hints: LeanGoalHint[] = []
   const methodsUsed: string[] = []
+  const failures: GoalProbeFailure[] = []
   const argsCandidates = buildLeanApiArgs(fileUri, diagnostics)
   const maxMethods = 3
 
@@ -914,8 +1065,13 @@ const loadGoalHintsFromLeanExtensionApi = async (
         matched = true
         break
       }
-      catch {
-        // Ignore method-specific signature mismatch and keep probing.
+      catch (error) {
+        pushProbeFailure(failures, {
+          source: 'api',
+          method: method.name,
+          code: toProbeCode(error),
+          message: toErrorMessage(error)
+        })
       }
     }
 
@@ -924,7 +1080,7 @@ const loadGoalHintsFromLeanExtensionApi = async (
     }
   }
 
-  return { hints, methodsUsed }
+  return { hints, methodsUsed, failures }
 }
 
 const discoverLeanGoalCommands = async (): Promise<string[]> => {
@@ -994,15 +1150,29 @@ const buildGoalCommandArgs = (
 const loadGoalHintsFromLeanCommands = async (
   fileUri: string,
   diagnostics: readonly vscode.Diagnostic[]
-): Promise<{ hints: LeanGoalHint[]; commandsUsed: string[] }> => {
+): Promise<{
+  hints: LeanGoalHint[]
+  commandsUsed: string[]
+  failures: GoalProbeFailure[]
+}> => {
   const commands = await discoverLeanGoalCommands()
   if (commands.length === 0) {
-    return { hints: [], commandsUsed: [] }
+    return {
+      hints: [],
+      commandsUsed: [],
+      failures: [{
+        source: 'command',
+        method: 'discoverLeanGoalCommands',
+        code: 'COMMANDS_UNAVAILABLE',
+        message: 'No Lean goal commands were discovered from the command registry.'
+      }]
+    }
   }
 
   const execute = vscode.commands.executeCommand as unknown as (command: string, ...args: unknown[]) => Promise<unknown>
   const hints: LeanGoalHint[] = []
   const commandsUsed: string[] = []
+  const failures: GoalProbeFailure[] = []
   const argsCandidates = buildGoalCommandArgs(fileUri, diagnostics)
   const maxCommands = 4
 
@@ -1020,8 +1190,13 @@ const loadGoalHintsFromLeanCommands = async (
         commandMatched = true
         break
       }
-      catch {
-        // Ignore signature mismatch and continue probing next call shape.
+      catch (error) {
+        pushProbeFailure(failures, {
+          source: 'command',
+          method: command,
+          code: toProbeCode(error),
+          message: toErrorMessage(error)
+        })
       }
     }
 
@@ -1030,7 +1205,7 @@ const loadGoalHintsFromLeanCommands = async (
     }
   }
 
-  return { hints, commandsUsed }
+  return { hints, commandsUsed, failures }
 }
 
 const clampPositionToDocument = (
@@ -1110,27 +1285,40 @@ const proofFlowEffects: Effects = createProofFlowEffects({
       const uri = vscode.Uri.parse(fileUri)
       const document = await vscode.workspace.openTextDocument(uri)
       const diagnostics = vscode.languages.getDiagnostics(uri)
+      const sourceText = document.getText()
       return {
         fileUri,
-        sourceText: document.getText(),
+        sourceText,
         diagnostics: diagnostics.map(toLeanDiagnostic),
-        goals: extractGoalHintsFromDiagnostics(diagnostics)
+        goals: [
+          ...extractGoalHintsFromDiagnostics(diagnostics),
+          ...extractGoalHintsFromDeclarations(sourceText)
+        ]
       }
     },
     loadGoals: async ({ fileUri }, context) => {
       const uri = vscode.Uri.parse(fileUri)
       const diagnostics = vscode.languages.getDiagnostics(uri)
       const stableResult = await loadGoalHintsFromLeanStableRequests(fileUri, diagnostics)
-      const diagnosticHints = context.goals ?? extractGoalHintsFromDiagnostics(diagnostics)
-      const hoverHints = await extractGoalHintsFromHoverProvider(uri, diagnostics)
+      const contextHints = context.goals ?? extractGoalHintsFromDiagnostics(diagnostics)
+      const declarationHints = contextHints.filter((hint) => hint.source === 'declaration')
+      const diagnosticHints = contextHints.filter((hint) => hint.source !== 'declaration')
+      const hoverResult = await extractGoalHintsFromHoverProvider(uri, diagnostics)
       const apiResult = await loadGoalHintsFromLeanExtensionApi(fileUri, diagnostics)
       const commandResult = await loadGoalHintsFromLeanCommands(fileUri, diagnostics)
+      const probeFailures: GoalProbeFailure[] = [
+        ...stableResult.failures,
+        ...hoverResult.failures,
+        ...apiResult.failures,
+        ...commandResult.failures
+      ]
       const stableRangedHints = stableResult.hints.filter((hint) => Boolean(hint.range))
       const stableUnrangedHints = stableResult.hints.filter((hint) => !hint.range)
       const merged = dedupeGoalHints([
         ...stableRangedHints,
+        ...declarationHints,
         ...diagnosticHints,
-        ...hoverHints,
+        ...hoverResult.hints,
         ...apiResult.hints,
         ...commandResult.hints,
         ...stableUnrangedHints
@@ -1138,13 +1326,16 @@ const proofFlowEffects: Effects = createProofFlowEffects({
 
       goalSourceStatsByFileUri.set(fileUri, {
         stableHints: stableResult.hints.length,
+        declarationHints: declarationHints.length,
         diagnosticHints: diagnosticHints.length,
-        hoverHints: hoverHints.length,
+        hoverHints: hoverResult.hints.length,
         apiHints: apiResult.hints.length,
         commandHints: commandResult.hints.length,
         stableMethodsUsed: stableResult.methodsUsed,
         apiMethodsUsed: apiResult.methodsUsed,
-        commandsUsed: commandResult.commandsUsed
+        commandsUsed: commandResult.commandsUsed,
+        probeFailures,
+        leanClientReady: stableResult.leanClientReady
       })
 
       return merged
@@ -1183,23 +1374,77 @@ const proofFlowEffects: Effects = createProofFlowEffects({
   }
 })
 
-const readDomainMel = async (): Promise<string> => {
-  const workspace = vscode.workspace.workspaceFolders?.[0]
-  if (!workspace) {
-    throw new Error('ProofFlow requires an opened workspace folder.')
+const tryReadUtf8 = async (uri: vscode.Uri): Promise<string | null> => {
+  try {
+    const bytes = await vscode.workspace.fs.readFile(uri)
+    return new TextDecoder().decode(bytes)
   }
-
-  const domainUri = vscode.Uri.joinPath(
-    workspace.uri,
-    'packages',
-    'schema',
-    'domain.mel'
-  )
-  const bytes = await vscode.workspace.fs.readFile(domainUri)
-  return new TextDecoder().decode(bytes)
+  catch {
+    return null
+  }
 }
 
-const ensureApp = async (): Promise<App> => {
+const resolveConfiguredSchemaUri = (): vscode.Uri | null => {
+  const configured = vscode.workspace
+    .getConfiguration('proofFlow')
+    .get<string>('schemaPath')
+    ?.trim()
+
+  if (!configured) {
+    return null
+  }
+
+  const workspace = vscode.workspace.workspaceFolders?.[0]
+  const isUriLike = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(configured)
+  if (isUriLike) {
+    try {
+      return vscode.Uri.parse(configured)
+    }
+    catch {
+      return null
+    }
+  }
+
+  if (path.isAbsolute(configured)) {
+    return vscode.Uri.file(configured)
+  }
+
+  if (!workspace) {
+    return null
+  }
+
+  return vscode.Uri.joinPath(workspace.uri, configured)
+}
+
+const readDomainMel = async (context: vscode.ExtensionContext): Promise<string> => {
+  const configuredUri = resolveConfiguredSchemaUri()
+  const workspace = vscode.workspace.workspaceFolders?.[0]
+  const extensionUri = context.extensionUri
+
+  const candidates = [
+    configuredUri,
+    extensionUri
+      ? vscode.Uri.joinPath(extensionUri, '..', 'schema', 'domain.mel')
+      : null,
+    extensionUri
+      ? vscode.Uri.joinPath(extensionUri, 'node_modules', '@proof-flow', 'schema', 'domain.mel')
+      : null,
+    workspace
+      ? vscode.Uri.joinPath(workspace.uri, 'packages', 'schema', 'domain.mel')
+      : null
+  ].filter((candidate): candidate is vscode.Uri => Boolean(candidate))
+
+  for (const candidate of candidates) {
+    const content = await tryReadUtf8(candidate)
+    if (content !== null) {
+      return content
+    }
+  }
+
+  throw new Error('ProofFlow schema (domain.mel) not found. Set `proofFlow.schemaPath` if needed.')
+}
+
+const ensureApp = async (context: vscode.ExtensionContext): Promise<App> => {
   if (app) {
     return app
   }
@@ -1209,7 +1454,7 @@ const ensureApp = async (): Promise<App> => {
     throw new Error('ProofFlow requires an opened workspace folder.')
   }
 
-  const schema = await readDomainMel()
+  const schema = await readDomainMel(context)
   const world = await createProofFlowWorld({
     world: {
       rootPath: workspace.uri.fsPath
@@ -1293,28 +1538,141 @@ const maybeRecordAttempt = async (targetFileUri: string): Promise<void> => {
   })
 }
 
+const emptyGoalSourceStats = (): GoalSourceStats => ({
+  stableHints: 0,
+  declarationHints: 0,
+  diagnosticHints: 0,
+  hoverHints: 0,
+  apiHints: 0,
+  commandHints: 0,
+  stableMethodsUsed: [],
+  apiMethodsUsed: [],
+  commandsUsed: [],
+  probeFailures: [],
+  leanClientReady: false
+})
+
+const appendRuntimeProbeFailure = (
+  fileUri: string,
+  method: string,
+  code: string,
+  message: string
+): void => {
+  const stats = goalSourceStatsByFileUri.get(fileUri) ?? emptyGoalSourceStats()
+  const nextFailures = [...stats.probeFailures]
+  pushProbeFailure(nextFailures, {
+    source: 'runtime',
+    method,
+    code,
+    message
+  })
+  goalSourceStatsByFileUri.set(fileUri, {
+    ...stats,
+    probeFailures: nextFailures
+  })
+}
+
+const isLeanExtensionInstalled = (): boolean => {
+  const extensionsApi = vscode.extensions as typeof vscode.extensions | undefined
+  if (!extensionsApi || typeof extensionsApi.getExtension !== 'function') {
+    return false
+  }
+  return Boolean(extensionsApi.getExtension('leanprover.lean4'))
+}
+
+const waitForGoalReadiness = async (fileUri: string): Promise<GoalCoverageReadiness> => {
+  const startedAt = Date.now()
+  let leanClientReady = false
+  let dagSynced = false
+  let lastSyncedAt: number | null = null
+  let transportReady = false
+  const hasLeanExtension = isLeanExtensionInstalled()
+
+  if (!hasLeanExtension) {
+    const initialState = app?.getState<ProofFlowState>().data
+    const file = initialState?.files[fileUri]
+    return {
+      status: 'warming',
+      waitedMs: 0,
+      leanClientReady: false,
+      dagSynced: Boolean(file?.dag),
+      lastSyncedAt: file?.lastSyncedAt ?? null
+    }
+  }
+
+  while ((Date.now() - startedAt) < GOAL_READINESS_TIMEOUT_MS) {
+    const syncRequestedAt = Date.now()
+    await actSafely('dag_sync', { fileUri })
+
+    const currentState = app?.getState<ProofFlowState>().data
+    const file = currentState?.files[fileUri]
+    lastSyncedAt = file?.lastSyncedAt ?? null
+    dagSynced = Boolean(file?.dag) && typeof lastSyncedAt === 'number' && lastSyncedAt >= syncRequestedAt
+
+    if (!leanClientReady) {
+      const client = await resolveLeanClient(fileUri)
+      leanClientReady = Boolean(client)
+    }
+
+    const stats = goalSourceStatsByFileUri.get(fileUri)
+    const stableProbeObserved = (
+      typeof stats?.stableHints === 'number'
+      || (stats?.probeFailures.some((failure) => failure.source === 'stable') ?? false)
+    )
+    const noConnectionFailure = stats?.probeFailures.some((failure) => (
+      failure.source === 'stable'
+      && /no connection to lean/i.test(failure.message)
+    )) ?? false
+    if (leanClientReady && stableProbeObserved && !noConnectionFailure) {
+      transportReady = true
+    }
+
+    if (dagSynced && leanClientReady && transportReady) {
+      return {
+        status: 'ready',
+        waitedMs: Date.now() - startedAt,
+        leanClientReady,
+        dagSynced,
+        lastSyncedAt
+      }
+    }
+
+    await sleep(GOAL_READINESS_POLL_MS)
+  }
+
+  return {
+    status: dagSynced ? 'warming' : 'timeout',
+    waitedMs: Date.now() - startedAt,
+    leanClientReady,
+    dagSynced,
+    lastSyncedAt
+  }
+}
+
 const reportGoalCoverage = async (): Promise<void> => {
   if (!app) {
     return
   }
 
-  const snapshot = getGoalCoverageSnapshot()
+  const snapshot = await getGoalCoverageSnapshot()
   if (!snapshot) {
     return
   }
 
   const stats = snapshot.sources
   const sourceSummary = stats
-    ? ` | hints s/d/h/a/c=${stats.stableHints}/${stats.diagnosticHints}/${stats.hoverHints}/${stats.apiHints}/${stats.commandHints}`
+    ? ` | hints s/decl/d/h/a/c=${stats.stableHints}/${stats.declarationHints}/${stats.diagnosticHints}/${stats.hoverHints}/${stats.apiHints}/${stats.commandHints}`
       + (stats.stableMethodsUsed.length > 0 ? ` | stable=${stats.stableMethodsUsed.join(',')}` : '')
       + (stats.apiMethodsUsed.length > 0 ? ` | api=${stats.apiMethodsUsed.join(',')}` : '')
       + (stats.commandsUsed.length > 0 ? ` | cmds=${stats.commandsUsed.join(',')}` : '')
+      + ` | failures=${stats.probeFailures.length}`
     : ''
-  const message = `[ProofFlow] Goal coverage ${snapshot.withGoal}/${snapshot.totalNodes} (${snapshot.percent}%)${sourceSummary}`
+  const message = `[ProofFlow] Goal coverage ${snapshot.withGoal}/${snapshot.totalNodes} (${snapshot.percent}%)`
+    + ` | readiness=${snapshot.readiness.status} (${snapshot.readiness.waitedMs}ms)${sourceSummary}`
   void vscode.window.showInformationMessage(message)
 }
 
-const getGoalCoverageSnapshot = (): GoalCoverageSnapshot | null => {
+const getGoalCoverageSnapshot = async (): Promise<GoalCoverageSnapshot | null> => {
   if (!app) {
     return null
   }
@@ -1326,8 +1684,16 @@ const getGoalCoverageSnapshot = (): GoalCoverageSnapshot | null => {
     return null
   }
 
-  const dag = state.files[activeFileUri]?.dag
+  const readiness = await waitForGoalReadiness(activeFileUri)
+  const refreshedState = app.getState<ProofFlowState>().data
+  const dag = refreshedState.files[activeFileUri]?.dag
   if (!dag) {
+    appendRuntimeProbeFailure(
+      activeFileUri,
+      'getGoalCoverageSnapshot',
+      'DAG_UNAVAILABLE',
+      'No DAG available after readiness wait.'
+    )
     void vscode.window.showInformationMessage('[ProofFlow] No DAG available for active file.')
     return null
   }
@@ -1344,7 +1710,8 @@ const getGoalCoverageSnapshot = (): GoalCoverageSnapshot | null => {
     withGoal,
     ratio,
     percent,
-    sources: goalSourceStatsByFileUri.get(activeFileUri) ?? null
+    sources: goalSourceStatsByFileUri.get(activeFileUri) ?? emptyGoalSourceStats(),
+    readiness
   }
 }
 
@@ -1429,7 +1796,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(panelController)
 
   try {
-    readyApp = await ensureApp()
+    readyApp = await ensureApp(context)
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)

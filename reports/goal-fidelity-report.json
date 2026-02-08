@@ -1,45 +1,115 @@
 {
-  "measuredAt": "2026-02-08T04:21:01.154Z",
-  "workspace": "/Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow",
-  "totalNodes": 2,
-  "withGoal": 0,
-  "ratio": 0,
-  "percent": "0.0",
+  "measuredAt": "2026-02-08T04:39:04.622Z",
+  "workspace": "/Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity",
+  "totalNodes": 3,
+  "withGoal": 2,
+  "ratio": 0.6666666666666666,
+  "percent": "66.7",
   "samples": [
     {
-      "sample": "samples/goal-fidelity/GoalFidelitySamples/Basic.lean",
+      "sample": "GoalFidelitySamples/Basic.lean",
       "fileUri": "file:///Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity/GoalFidelitySamples/Basic.lean",
       "totalNodes": 1,
-      "withGoal": 0,
-      "ratio": 0,
-      "percent": "0.0",
+      "withGoal": 1,
+      "ratio": 1,
+      "percent": "100.0",
       "sources": {
         "stableHints": 0,
+        "declarationHints": 2,
         "diagnosticHints": 0,
         "hoverHints": 0,
         "apiHints": 0,
         "commandHints": 0,
         "stableMethodsUsed": [],
         "apiMethodsUsed": [],
-        "commandsUsed": []
+        "commandsUsed": [],
+        "probeFailures": [
+          {
+            "source": "api",
+            "method": "leanprover.lean4 exports",
+            "code": "API_METHODS_UNAVAILABLE",
+            "message": "No Lean extension API goal methods were discovered."
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.copyState",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'copyStateId')"
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.displayTargetBeforeAssumptions",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'displayTargetBeforeAssumptionsId')"
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.displayAssumptionsBeforeTarget",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'displayAssumptionsBeforeTargetId')"
+          }
+        ],
+        "leanClientReady": true
+      },
+      "readiness": {
+        "status": "ready",
+        "waitedMs": 4492,
+        "leanClientReady": true,
+        "dagSynced": true,
+        "lastSyncedAt": 1770525536501
       }
     },
     {
-      "sample": "samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean",
+      "sample": "GoalFidelitySamples/MathlibSample.lean",
       "fileUri": "file:///Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean",
-      "totalNodes": 1,
-      "withGoal": 0,
-      "ratio": 0,
-      "percent": "0.0",
+      "totalNodes": 2,
+      "withGoal": 1,
+      "ratio": 0.5,
+      "percent": "50.0",
       "sources": {
         "stableHints": 0,
+        "declarationHints": 1,
         "diagnosticHints": 0,
         "hoverHints": 0,
         "apiHints": 0,
         "commandHints": 0,
         "stableMethodsUsed": [],
         "apiMethodsUsed": [],
-        "commandsUsed": []
+        "commandsUsed": [],
+        "probeFailures": [
+          {
+            "source": "api",
+            "method": "leanprover.lean4 exports",
+            "code": "API_METHODS_UNAVAILABLE",
+            "message": "No Lean extension API goal methods were discovered."
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.copyState",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'copyStateId')"
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.displayTargetBeforeAssumptions",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'displayTargetBeforeAssumptionsId')"
+          },
+          {
+            "source": "command",
+            "method": "lean4.infoview.displayAssumptionsBeforeTarget",
+            "code": "UNKNOWN",
+            "message": "Cannot read properties of undefined (reading 'displayAssumptionsBeforeTargetId')"
+          }
+        ],
+        "leanClientReady": true
+      },
+      "readiness": {
+        "status": "ready",
+        "waitedMs": 1383,
+        "leanClientReady": true,
+        "dagSynced": true,
+        "lastSyncedAt": 1770525544046
       }
     }
   ]

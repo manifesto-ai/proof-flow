@@ -17,6 +17,16 @@
     "onCommand:proof-flow.goalCoverageSnapshot"
   ],
   "contributes": {
+    "configuration": {
+      "title": "ProofFlow",
+      "properties": {
+        "proofFlow.schemaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path, URI, or workspace-relative path to override domain.mel loading."
+        }
+      }
+    },
     "commands": [
       {
         "command": "proof-flow.hello",
