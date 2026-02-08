@@ -460,4 +460,29 @@ describe('Extension E2E flow', () => {
 
     await extension.deactivate()
   })
+
+  it('dispatches tactic suggestion from command and panel action', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+    env.fakeState.data.ui.cursorNodeId = 'root'
+
+    const suggestCommand = env.getCommand('proof-flow.suggestTactics')
+    expect(suggestCommand).toBeTypeOf('function')
+
+    await suggestCommand?.()
+
+    const panel = env.getPanel() as { actions: { onSuggestTactics: () => Promise<void> } }
+    await panel.actions.onSuggestTactics()
+
+    const suggestCalls = env.getActCalls().filter((call) => call.type === 'attempt_suggest')
+    expect(suggestCalls.length).toBe(2)
+    expect(suggestCalls[0]?.input).toMatchObject({
+      fileUri: env.leanUri.toString(),
+      nodeId: 'root'
+    })
+
+    await extension.deactivate()
+  })
 })

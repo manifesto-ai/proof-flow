@@ -284,4 +284,43 @@ describe('ProofFlow domain actions', () => {
     expect(state.data.patterns.totalAttempts).toBe(0)
     expect(state.data.patterns.updatedAt).toBeNull()
   })
+
+  it('attempt.suggest applies host patch and suggestions.clear resets state', async () => {
+    const fileUri = 'file:///proof.lean'
+    const nodeId = 'root'
+    const app = await createApp({
+      'proof_flow.attempt.suggest': async () => [
+        {
+          op: 'set',
+          path: 'suggestions',
+          value: {
+            version: '0.4.0',
+            byNode: {
+              [nodeId]: [{
+                nodeId,
+                tacticKey: 'exact',
+                score: 0.8,
+                sampleSize: 5,
+                successRate: 0.8,
+                sourceCategory: 'TACTIC_FAILED',
+                generatedAt: 100
+              }]
+            },
+            updatedAt: 100
+          }
+        }
+      ]
+    })
+
+    await app.act('attempt_suggest', { fileUri, nodeId }).done()
+
+    let state = app.getState<ProofFlowState>()
+    expect(state.data.suggestions.version).toBe('0.4.0')
+    expect(state.data.suggestions.byNode[nodeId]?.[0]?.tacticKey).toBe('exact')
+
+    await app.act('suggestions_clear').done()
+    state = app.getState<ProofFlowState>()
+    expect(state.data.suggestions.byNode).toEqual({})
+    expect(state.data.suggestions.updatedAt).toBeNull()
+  })
 })

@@ -138,10 +138,27 @@ export type PatternsState = {
   updatedAt: number | null
 }
 
+export type SuggestionEntry = {
+  nodeId: string
+  tacticKey: string
+  score: number
+  sampleSize: number
+  successRate: number
+  sourceCategory: ErrorCategory | null
+  generatedAt: number
+}
+
+export type SuggestionState = {
+  version: string
+  byNode: Record<string, SuggestionEntry[]>
+  updatedAt: number | null
+}
+
 export type ProofFlowState = {
   appVersion: string
   files: Record<string, FileState>
   ui: UiState
   history: HistoryState
   patterns: PatternsState
+  suggestions: SuggestionState
 }

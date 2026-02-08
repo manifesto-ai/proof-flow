@@ -15,12 +15,17 @@ import {
   createAttemptRecordEffect,
   type CreateAttemptRecordEffectOptions
 } from './effects/attempt-record.js'
+import {
+  createAttemptSuggestEffect,
+  type CreateAttemptSuggestEffectOptions
+} from './effects/attempt-suggest.js'
 
 export type CreateProofFlowEffectsOptions = {
   dagExtract: CreateDagExtractEffectOptions
   editorReveal: CreateEditorRevealEffectOptions
   editorGetCursor: CreateEditorGetCursorEffectOptions
   attemptRecord?: CreateAttemptRecordEffectOptions
+  attemptSuggest?: CreateAttemptSuggestEffectOptions
 }
 
 export const createProofFlowEffects = (
@@ -29,13 +34,15 @@ export const createProofFlowEffects = (
   'proof_flow.dag.extract': createDagExtractEffect(options.dagExtract),
   'proof_flow.editor.reveal': createEditorRevealEffect(options.editorReveal),
   'proof_flow.editor.getCursor': createEditorGetCursorEffect(options.editorGetCursor),
-  'proof_flow.attempt.record': createAttemptRecordEffect(options.attemptRecord)
+  'proof_flow.attempt.record': createAttemptRecordEffect(options.attemptRecord),
+  'proof_flow.attempt.suggest': createAttemptSuggestEffect(options.attemptSuggest)
 })
 
 export * from './effects/dag-extract.js'
 export * from './effects/editor-reveal.js'
 export * from './effects/cursor-get.js'
 export * from './effects/attempt-record.js'
+export * from './effects/attempt-suggest.js'
 export * from './effects/types.js'
 export * from './lean/types.js'
 export * from './lean/error-category.js'

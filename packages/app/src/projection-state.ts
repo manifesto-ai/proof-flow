@@ -70,6 +70,15 @@ export type ProjectionPatternInsight = {
   lastUpdated: number
 }
 
+export type ProjectionSuggestion = {
+  tacticKey: string
+  score: number
+  sampleSize: number
+  successRate: number
+  sourceCategory: ErrorCategory | null
+  generatedAt: number
+}
+
 export type ProjectionDashboard = {
   totalPatterns: number
   qualifiedPatterns: number
@@ -105,6 +114,7 @@ export type ProjectionState = {
   selectedNode: ProjectionNode | null
   selectedNodeHistory: ProjectionNodeHistory
   patternInsights: ProjectionPatternInsight[]
+  selectedNodeSuggestions: ProjectionSuggestion[]
 }
 
 type FileHistory = ProofFlowState['history']['files'][string]
@@ -124,6 +134,22 @@ const emptyErrorCategoryTotals = (): Record<ErrorCategory, number> => ({
   SYNTAX_ERROR: 0,
   OTHER: 0
 })
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+const asNumber = (value: unknown, fallback = 0): number => (
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+)
+
+const asNullableNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+)
 
 const toHeatLevel = (count: number): ProjectionHeatLevel => {
   if (count <= 0) {
@@ -343,6 +369,64 @@ const toNodeHeatmap = (nodeAttempts: Record<string, number>): ProjectionState['n
   return Object.fromEntries(entries)
 }
 
+const toProjectionSuggestions = (
+  state: ProofFlowState,
+  selectedNodeId: string | null
+): ProjectionSuggestion[] => {
+  if (!selectedNodeId) {
+    return []
+  }
+
+  const data = state as unknown as Record<string, unknown>
+  const suggestions = asRecord(data.suggestions)
+  const byNode = asRecord(suggestions?.byNode)
+  const entries = byNode?.[selectedNodeId]
+  if (!Array.isArray(entries)) {
+    return []
+  }
+
+  return entries
+    .map((entry): ProjectionSuggestion | null => {
+      const candidate = asRecord(entry)
+      if (!candidate) {
+        return null
+      }
+
+      const tacticKey = typeof candidate.tacticKey === 'string'
+        ? candidate.tacticKey
+        : null
+
+      if (!tacticKey) {
+        return null
+      }
+
+      const sourceCategory = candidate.sourceCategory
+      const normalizedCategory = (
+        sourceCategory === null
+          || sourceCategory === 'TYPE_MISMATCH'
+          || sourceCategory === 'UNKNOWN_IDENTIFIER'
+          || sourceCategory === 'TACTIC_FAILED'
+          || sourceCategory === 'UNSOLVED_GOALS'
+          || sourceCategory === 'TIMEOUT'
+          || sourceCategory === 'KERNEL_ERROR'
+          || sourceCategory === 'SYNTAX_ERROR'
+          || sourceCategory === 'OTHER'
+      )
+        ? sourceCategory
+        : null
+
+      return {
+        tacticKey,
+        score: asNumber(candidate.score),
+        sampleSize: asNumber(candidate.sampleSize),
+        successRate: asNumber(candidate.successRate),
+        sourceCategory: normalizedCategory,
+        generatedAt: asNullableNumber(candidate.generatedAt) ?? 0
+      }
+    })
+    .filter((entry): entry is ProjectionSuggestion => entry !== null)
+}
+
 export const selectProjectionState = (appState: AppState<unknown>): ProjectionState => {
   const state = appState.data as ProofFlowState
   const computed = appState.computed as Record<string, unknown>
@@ -370,6 +454,7 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
   const normalizedPatterns = toNormalizedPatterns(state.patterns.entries)
   const preferredCategory = selectedNodeRaw?.status.errorCategory ?? null
   const patternInsights = toPatternInsights(normalizedPatterns, preferredCategory)
+  const selectedNodeSuggestions = toProjectionSuggestions(state, selectedNodeId)
 
   return {
     ui: {
@@ -399,6 +484,7 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
     nodes,
     selectedNode: selectedNodeRaw ? toProjectionNode(selectedNodeRaw, nodeAttempts[selectedNodeRaw.id] ?? 0) : null,
     selectedNodeHistory,
-    patternInsights
+    patternInsights,
+    selectedNodeSuggestions
   }
 }

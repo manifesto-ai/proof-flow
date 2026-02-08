@@ -11,9 +11,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@proof-flow/schema": ["packages/schema/src"],
-      "@proof-flow/host": ["packages/host/src"],
-      "@proof-flow/app": ["packages/app/src"]
+      "@proof-flow/schema": ["packages/schema/src/index.ts"],
+      "@proof-flow/host": ["packages/host/src/index.ts"],
+      "@proof-flow/app": ["packages/app/src/config.ts"]
     }
   }
 }

@@ -16,7 +16,8 @@ const baseData = (): ProofFlowState => ({
     collapseResolved: false
   },
   history: { version: '0.2.0', files: {} },
-  patterns: { version: '0.3.0', entries: {}, totalAttempts: 0, updatedAt: null }
+  patterns: { version: '0.3.0', entries: {}, totalAttempts: 0, updatedAt: null },
+  suggestions: { version: '0.4.0', byNode: {}, updatedAt: null }
 })
 
 const makeState = (overrides?: Partial<AppState<unknown>>): AppState<unknown> => ({
@@ -143,6 +144,32 @@ describe('Projection selector', () => {
           },
           totalAttempts: 8,
           updatedAt: 140
+        },
+        suggestions: {
+          version: '0.4.0',
+          byNode: {
+            child: [
+              {
+                nodeId: 'child',
+                tacticKey: 'exact',
+                score: 0.8,
+                sampleSize: 5,
+                successRate: 0.8,
+                sourceCategory: 'OTHER',
+                generatedAt: 141
+              },
+              {
+                nodeId: 'child',
+                tacticKey: 'aesop',
+                score: 0.2,
+                sampleSize: 5,
+                successRate: 0.2,
+                sourceCategory: 'OTHER',
+                generatedAt: 141
+              }
+            ]
+          },
+          updatedAt: 141
         }
       },
       computed: {
@@ -249,6 +276,10 @@ describe('Projection selector', () => {
       sampleSize: 3,
       successRate: 2 / 3
     })
+    expect(projection.selectedNodeSuggestions.map((entry) => entry.tacticKey)).toEqual([
+      'exact',
+      'aesop'
+    ])
   })
 
   it('returns safe null projection when computed dag is absent', () => {
@@ -270,5 +301,6 @@ describe('Projection selector', () => {
     expect(projection.selectedNode).toBeNull()
     expect(projection.selectedNodeHistory).toBeNull()
     expect(projection.patternInsights).toEqual([])
+    expect(projection.selectedNodeSuggestions).toEqual([])
   })
 })

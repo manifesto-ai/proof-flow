@@ -235,6 +235,22 @@ export async function activate(context: vscode.ExtensionContext) {
     await actSafely('patterns_reset')
   }
 
+  const suggestTacticsForCurrentNode = async (): Promise<void> => {
+    if (!app) {
+      return
+    }
+
+    const state = app.getState<ProofFlowState>().data
+    const fileUri = state.ui.activeFileUri
+    const nodeId = state.ui.selectedNodeId ?? state.ui.cursorNodeId
+    if (!fileUri || !nodeId) {
+      void vscode.window.showInformationMessage('[ProofFlow] Select a node before requesting suggestions.')
+      return
+    }
+
+    await actSafely('attempt_suggest', { fileUri, nodeId })
+  }
+
   panelController = new ProjectionPanelController(context, {
     onNodeSelect: async (nodeId) => {
       await actSafely('node_select', { nodeId })
@@ -253,6 +269,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     onResetPatterns: async () => {
       await resetPatterns()
+    },
+    onSuggestTactics: async () => {
+      await suggestTacticsForCurrentNode()
     }
   })
 
@@ -293,6 +312,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const resetPatternsCommand = vscode.commands.registerCommand('proof-flow.patternsReset', async () => {
     await resetPatterns()
+  })
+
+  const suggestTacticsCommand = vscode.commands.registerCommand('proof-flow.suggestTactics', async () => {
+    await suggestTacticsForCurrentNode()
   })
 
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
@@ -350,6 +373,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     togglePanel,
     resetPatternsCommand,
+    suggestTacticsCommand,
     onEditorChange,
     onDocumentSave,
     onDiagnosticsChange,

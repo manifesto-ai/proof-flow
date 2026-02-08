@@ -25,6 +25,9 @@
 - ✅ Pattern reset UX wiring (WebView button + command palette `proof-flow.patternsReset`)
 - ✅ WorldStore dynamic-key replay hardening (`history.files.*`, `patterns.entries.*`)
 - ✅ v0.4 prep 문서화 (`docs/V0.4-PREP.md`)
+- ✅ v0.4 suggestion domain contract (`attempt_suggest`, `suggestions_clear`, `SuggestionState`)
+- ✅ Host suggestion effect baseline (`proof_flow.attempt.suggest`) + deterministic ranking tests
+- ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
 
 ## Checkpoints
 
@@ -87,8 +90,8 @@
 
 ### 9. v0.4 Core-First Suggestion Loop (Prep)
 - [x] v0.4 실행 준비 문서 작성 (`docs/V0.4-PREP.md`)
-- [ ] MEL 계약 추가: `attempt_suggest` / `suggestions_clear` + `SuggestionState`
-- [ ] Host effect 추가: `proof_flow.attempt.suggest` (패턴/히스토리 기반 deterministic ranking)
-- [ ] Projection 확장: selected node 추천 tactic 목록 + 근거(score/sample/category)
-- [ ] Extension 트리거: command palette `proof-flow.suggestTactics` + panel action 연결
-- [ ] 테스트 우선 구현: domain/host/projection/e2e 각각 최소 1개 회귀 시나리오
+- [x] MEL 계약 추가: `attempt_suggest` / `suggestions_clear` + `SuggestionState`
+- [x] Host effect 추가: `proof_flow.attempt.suggest` (패턴/히스토리 기반 deterministic ranking)
+- [x] Projection 확장: selected node 추천 tactic 목록 + 근거(score/sample/category)
+- [x] Extension 트리거: command palette `proof-flow.suggestTactics` + panel action 연결
+- [x] 테스트 우선 구현: domain/host/projection/e2e 각각 최소 1개 회귀 시나리오

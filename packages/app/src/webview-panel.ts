@@ -10,6 +10,7 @@ export type ProjectionPanelActions = {
   onSetZoom: (zoom: number) => Promise<void>
   onToggleCollapse: () => Promise<void>
   onResetPatterns: () => Promise<void>
+  onSuggestTactics: () => Promise<void>
 }
 
 type WebviewMessage =
@@ -19,6 +20,7 @@ type WebviewMessage =
   | { type: 'setZoom'; payload?: { zoom?: number } }
   | { type: 'toggleCollapse' }
   | { type: 'resetPatterns' }
+  | { type: 'suggestTactics' }
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -63,7 +65,8 @@ const initialProjectionState = (): ProjectionState => ({
   nodes: [],
   selectedNode: null,
   selectedNodeHistory: null,
-  patternInsights: []
+  patternInsights: [],
+  selectedNodeSuggestions: []
 })
 
 const initialStateForHtml = (state: ProjectionState | null): string => {
@@ -214,6 +217,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     <div class="row" style="align-items:center;">
       <button class="btn" id="toggleLayout">Layout</button>
       <button class="btn" id="toggleCollapse">Collapse Resolved</button>
+      <button class="btn" id="suggestTactics">Suggest Tactics</button>
       <button class="btn" id="resetPatterns">Reset Patterns</button>
       <button class="btn" id="togglePanel">Hide Panel</button>
       <label class="meta" for="zoom">Zoom</label>
@@ -477,6 +481,23 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
           + '</pre>'
         : '<div class="meta">No qualified pattern insights (sample >= 3).</div>';
 
+      const suggestions = Array.isArray(state.selectedNodeSuggestions) ? state.selectedNodeSuggestions : [];
+      const suggestionBlock = suggestions.length > 0
+        ? '<pre class="meta">Suggested Tactics:\\n'
+          + suggestions
+            .slice(0, 5)
+            .map((entry) => {
+              const category = entry.sourceCategory ? ' @ ' + entry.sourceCategory : '';
+              return '- ' + entry.tacticKey
+                + category
+                + ' => score ' + Number(entry.score || 0).toFixed(2)
+                + ', sample ' + (entry.sampleSize || 0)
+                + ', winrate ' + Number(entry.successRate || 0).toFixed(2);
+            })
+            .join('\\n')
+          + '</pre>'
+        : '<div class="meta">No tactic suggestions yet. Run Suggest Tactics.</div>';
+
       const dashboard = state.dashboard || {
         totalPatterns: 0,
         qualifiedPatterns: 0,
@@ -508,6 +529,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '')
         + historyBlock
         + patternBlock
+        + suggestionBlock
         + dashboardBlock;
     };
 
@@ -555,6 +577,10 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
     document.getElementById('resetPatterns').addEventListener('click', () => {
       vscode.postMessage({ type: 'resetPatterns' });
+    });
+
+    document.getElementById('suggestTactics').addEventListener('click', () => {
+      vscode.postMessage({ type: 'suggestTactics' });
     });
 
     document.getElementById('toggleLayout').addEventListener('click', () => {
@@ -737,6 +763,9 @@ export class ProjectionPanelController implements vscode.Disposable {
         return
       case 'resetPatterns':
         await this.actions.onResetPatterns()
+        return
+      case 'suggestTactics':
+        await this.actions.onSuggestTactics()
         return
     }
   }

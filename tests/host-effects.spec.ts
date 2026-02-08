@@ -7,6 +7,7 @@ import {
   resolveNodeIdAtCursor
 } from '../packages/host/src/effects/cursor-get.js'
 import { createAttemptRecordEffect } from '../packages/host/src/effects/attempt-record.js'
+import { createAttemptSuggestEffect } from '../packages/host/src/effects/attempt-suggest.js'
 
 const fileUri = 'file:///proof.lean'
 
@@ -377,5 +378,204 @@ describe('Host effects', () => {
     expect(patterns.entries[patternKey].successCount).toBe(1)
     expect(patterns.entries[patternKey].failureCount).toBe(0)
     expect(patterns.entries[patternKey].score).toBe(1)
+  })
+
+  it('attempt.suggest ranks by category match, score, and sample size', async () => {
+    const effect = createAttemptSuggestEffect({
+      now: () => 1700000000100,
+      minSampleSize: 3,
+      limit: 3
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: {
+          files: {
+            [fileUri]: {
+              dag: {
+                nodes: {
+                  child: {
+                    status: {
+                      errorCategory: 'TACTIC_FAILED'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          history: {
+            files: {
+              [fileUri]: {
+                nodes: {
+                  child: {
+                    attempts: {
+                      h1: {
+                        timestamp: 1,
+                        tacticKey: 'omega',
+                        result: 'error',
+                        contextErrorCategory: 'TACTIC_FAILED'
+                      },
+                      h2: {
+                        timestamp: 2,
+                        tacticKey: 'omega',
+                        result: 'error',
+                        contextErrorCategory: 'TACTIC_FAILED'
+                      },
+                      h3: {
+                        timestamp: 3,
+                        tacticKey: 'omega',
+                        result: 'error',
+                        contextErrorCategory: 'TACTIC_FAILED'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          patterns: {
+            entries: {
+              'TACTIC_FAILED:exact': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'exact',
+                successCount: 4,
+                failureCount: 1,
+                score: 0.8
+              },
+              'TACTIC_FAILED:simp': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'simp',
+                successCount: 3,
+                failureCount: 0,
+                score: 1
+              },
+              'TACTIC_FAILED:linarith': {
+                errorCategory: 'TACTIC_FAILED',
+                tacticKey: 'linarith',
+                successCount: 1,
+                failureCount: 1,
+                score: 0.5
+              },
+              'OTHER:aesop': {
+                errorCategory: 'OTHER',
+                tacticKey: 'aesop',
+                successCount: 9,
+                failureCount: 1,
+                score: 0.9
+              }
+            }
+          },
+          suggestions: {
+            version: '0.4.0',
+            byNode: {},
+            updatedAt: null
+          }
+        }
+      }
+    })
+
+    expect(patches).toHaveLength(1)
+    expect(patches[0]?.op).toBe('set')
+    expect(patches[0]?.path).toBe('suggestions')
+
+    const suggestions = (patches[0] as { value: any }).value
+    const child = suggestions.byNode.child as Array<{ tacticKey: string; generatedAt: number }>
+    expect(child.map((entry) => entry.tacticKey)).toEqual(['simp', 'exact', 'omega'])
+    expect(child.every((entry) => entry.generatedAt === 1700000000100)).toBe(true)
+    expect(suggestions.updatedAt).toBe(1700000000100)
+  })
+
+  it('attempt.suggest uses history fallback and filters insufficient samples', async () => {
+    const effect = createAttemptSuggestEffect({
+      now: () => 1700000000200,
+      minSampleSize: 3,
+      limit: 5
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: {
+          history: {
+            files: {
+              [fileUri]: {
+                nodes: {
+                  child: {
+                    attempts: {
+                      a1: {
+                        timestamp: 10,
+                        tacticKey: 'simp',
+                        result: 'error',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a2: {
+                        timestamp: 11,
+                        tacticKey: 'simp',
+                        result: 'success',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a3: {
+                        timestamp: 20,
+                        tacticKey: 'exact',
+                        result: 'success',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a4: {
+                        timestamp: 21,
+                        tacticKey: 'exact',
+                        result: 'success',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a5: {
+                        timestamp: 22,
+                        tacticKey: 'exact',
+                        result: 'error',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a6: {
+                        timestamp: 23,
+                        tacticKey: 'aesop',
+                        result: 'error',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a7: {
+                        timestamp: 24,
+                        tacticKey: 'aesop',
+                        result: 'error',
+                        contextErrorCategory: 'OTHER'
+                      },
+                      a8: {
+                        timestamp: 25,
+                        tacticKey: 'aesop',
+                        result: 'error',
+                        contextErrorCategory: 'OTHER'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          patterns: {
+            entries: {}
+          },
+          suggestions: {
+            version: '0.4.0',
+            byNode: {},
+            updatedAt: null
+          }
+        }
+      }
+    })
+
+    const suggestions = (patches[0] as { value: any }).value
+    const child = suggestions.byNode.child as Array<{ tacticKey: string; sampleSize: number }>
+    expect(child.map((entry) => entry.tacticKey)).toEqual(['exact', 'aesop'])
+    expect(child.every((entry) => entry.sampleSize >= 3)).toBe(true)
   })
 })

@@ -131,6 +131,22 @@ domain ProofFlow {
     updatedAt: number | null
   }
 
+  type SuggestionEntry = {
+    nodeId: string,
+    tacticKey: string,
+    score: number,
+    sampleSize: number,
+    successRate: number,
+    sourceCategory: ErrorCategory | null,
+    generatedAt: number
+  }
+
+  type SuggestionState = {
+    version: string,
+    byNode: Record<string, Array<SuggestionEntry>>,
+    updatedAt: number | null
+  }
+
   // ================================
   // State
   // ================================
@@ -160,6 +176,13 @@ domain ProofFlow {
       version: "0.3.0",
       entries: {},
       totalAttempts: 0,
+      updatedAt: null
+    }
+
+    // v0.4 (INFORMATIVE)
+    suggestions: SuggestionState = {
+      version: "0.4.0",
+      byNode: {},
       updatedAt: null
     }
   }
@@ -363,6 +386,25 @@ domain ProofFlow {
         version: patterns.version,
         entries: {},
         totalAttempts: 0,
+        updatedAt: null
+      }
+    }
+  }
+
+  action attempt_suggest(fileUri: string, nodeId: string) {
+    onceIntent {
+      effect proof_flow.attempt.suggest({
+        fileUri: fileUri,
+        nodeId: nodeId
+      })
+    }
+  }
+
+  action suggestions_clear() {
+    when true {
+      patch suggestions = {
+        version: suggestions.version,
+        byNode: {},
         updatedAt: null
       }
     }

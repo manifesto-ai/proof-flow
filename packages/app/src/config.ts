@@ -34,6 +34,11 @@ const createInitialData = (): ProofFlowState => ({
     entries: {},
     totalAttempts: 0,
     updatedAt: null
+  },
+  suggestions: {
+    version: '0.4.0',
+    byNode: {},
+    updatedAt: null
   }
 })
 

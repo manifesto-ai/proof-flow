@@ -6,7 +6,11 @@
     "declarationMap": true,
     "outDir": "dist",
     "rootDir": "src",
-    "composite": true
+    "composite": true,
+    "paths": {
+      "@proof-flow/schema": ["../schema/dist/src/index.d.ts"],
+      "@proof-flow/host": ["../host/dist/index.d.ts"]
+    }
   },
   "include": [
     "src"

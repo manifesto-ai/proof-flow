@@ -24,7 +24,8 @@ describe('ProofFlow app config', () => {
       effects: {
         'proof_flow.dag.extract': async () => [],
         'proof_flow.editor.reveal': async () => [],
-        'proof_flow.attempt.record': async () => []
+        'proof_flow.attempt.record': async () => [],
+        'proof_flow.attempt.suggest': async () => []
       }
     })
 
@@ -38,6 +39,7 @@ describe('ProofFlow app config', () => {
     expect(state.data.files).toEqual({})
     expect(state.data.history.version).toBe('0.2.0')
     expect(state.data.patterns.version).toBe('0.3.0')
+    expect(state.data.suggestions.version).toBe('0.4.0')
     expect(state.data.ui.activeFileUri).toBe('file:///proof.lean')
   })
 })
