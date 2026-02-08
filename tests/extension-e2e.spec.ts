@@ -485,4 +485,22 @@ describe('Extension E2E flow', () => {
 
     await extension.deactivate()
   })
+
+  it('reports goal coverage for active DAG', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+
+    const reportCommand = env.getCommand('proof-flow.goalCoverageReport')
+    expect(reportCommand).toBeTypeOf('function')
+
+    await reportCommand?.()
+
+    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Goal coverage')
+    )
+
+    await extension.deactivate()
+  })
 })

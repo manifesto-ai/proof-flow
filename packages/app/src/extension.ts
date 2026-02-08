@@ -10,6 +10,7 @@ import {
   createProofFlowEffects,
   resolveNodeIdAtCursor,
   type LeanDiagnostic,
+  type LeanGoalHint,
   type LeanDiagnosticSeverity
 } from '@proof-flow/host'
 import { createProofFlowApp } from './config.js'
@@ -29,6 +30,14 @@ const isLeanDocument = (document: vscode.TextDocument): boolean => (
 )
 
 const isLeanUri = (uri: vscode.Uri): boolean => uri.path.endsWith('.lean')
+
+const LEAN_GOAL_COMMAND_CANDIDATES = [
+  'lean4.infoview.getGoals',
+  'lean4.getGoals',
+  'lean4.goalState'
+] as const
+
+let cachedGoalCommand: string | null | undefined
 
 const toVscodeRange = (range: Range): vscode.Range => {
   const startLine = Math.max(range.startLine - 1, 0)
@@ -78,6 +87,258 @@ const toLeanDiagnostic = (diagnostic: vscode.Diagnostic): LeanDiagnostic => ({
   }
 })
 
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+const asRange = (value: unknown): Range | null => {
+  const record = asRecord(value)
+  if (!record) {
+    return null
+  }
+
+  // Native Lean-style payload shape
+  if (
+    typeof record.startLine === 'number'
+    && typeof record.startCol === 'number'
+    && typeof record.endLine === 'number'
+    && typeof record.endCol === 'number'
+  ) {
+    return {
+      startLine: record.startLine,
+      startCol: record.startCol,
+      endLine: record.endLine,
+      endCol: record.endCol
+    }
+  }
+
+  // VS Code range shape
+  const start = asRecord(record.start)
+  const end = asRecord(record.end)
+  if (
+    start
+    && end
+    && typeof start.line === 'number'
+    && typeof start.character === 'number'
+    && typeof end.line === 'number'
+    && typeof end.character === 'number'
+  ) {
+    return {
+      startLine: start.line + 1,
+      startCol: start.character,
+      endLine: end.line + 1,
+      endCol: end.character
+    }
+  }
+
+  return null
+}
+
+const extractGoalLines = (message: string): string[] => message
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter((line) => line.includes('⊢') || line.toLowerCase().startsWith('goal:'))
+  .map((line) => line.startsWith('goal:') ? line.slice(5).trim() : line)
+  .filter((line) => line.length > 0)
+
+const extractGoalHintsFromDiagnostics = (
+  diagnostics: readonly vscode.Diagnostic[]
+): LeanGoalHint[] => {
+  const hints: LeanGoalHint[] = []
+  for (const diagnostic of diagnostics) {
+    const lines = extractGoalLines(diagnostic.message)
+    for (const goal of lines) {
+      hints.push({
+        goal,
+        range: {
+          startLine: diagnostic.range.start.line + 1,
+          startCol: diagnostic.range.start.character,
+          endLine: diagnostic.range.end.line + 1,
+          endCol: diagnostic.range.end.character
+        },
+        source: 'diagnostic'
+      })
+    }
+  }
+
+  return hints
+}
+
+const toHoverContentText = (content: vscode.MarkedString | vscode.MarkdownString): string => {
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if ('value' in content && typeof content.value === 'string') {
+    return content.value
+  }
+
+  const contentRecord = content as { value?: unknown }
+  return typeof contentRecord.value === 'string' ? contentRecord.value : ''
+}
+
+const extractGoalHintsFromHoverProvider = async (
+  uri: vscode.Uri,
+  diagnostics: readonly vscode.Diagnostic[]
+): Promise<LeanGoalHint[]> => {
+  const commandsApi = vscode.commands as typeof vscode.commands & {
+    executeCommand?: (command: string, ...args: unknown[]) => Thenable<unknown>
+  }
+
+  if (typeof commandsApi.executeCommand !== 'function') {
+    return []
+  }
+
+  const hints: LeanGoalHint[] = []
+  const seen = new Set<string>()
+
+  for (const diagnostic of diagnostics.slice(0, 20)) {
+    try {
+      const position = new vscode.Position(
+        diagnostic.range.start.line,
+        diagnostic.range.start.character
+      )
+      const raw = await commandsApi.executeCommand(
+        'vscode.executeHoverProvider',
+        uri,
+        position
+      )
+      const hovers = Array.isArray(raw) ? raw as vscode.Hover[] : []
+
+      for (const hover of hovers) {
+        const contents = Array.isArray(hover.contents) ? hover.contents : [hover.contents]
+        for (const content of contents) {
+          const text = toHoverContentText(content)
+          const goals = extractGoalLines(text)
+          for (const goal of goals) {
+            const key = [
+              goal,
+              diagnostic.range.start.line,
+              diagnostic.range.start.character,
+              diagnostic.range.end.line,
+              diagnostic.range.end.character
+            ].join('|')
+            if (seen.has(key)) {
+              continue
+            }
+
+            seen.add(key)
+            hints.push({
+              goal,
+              range: {
+                startLine: diagnostic.range.start.line + 1,
+                startCol: diagnostic.range.start.character,
+                endLine: diagnostic.range.end.line + 1,
+                endCol: diagnostic.range.end.character
+              },
+              source: 'hover'
+            })
+          }
+        }
+      }
+    }
+    catch {
+      // Ignore per-position hover failures and continue with other hints.
+    }
+  }
+
+  return hints
+}
+
+const normalizeGoalHints = (raw: unknown, source: string): LeanGoalHint[] => {
+  const list = Array.isArray(raw)
+    ? raw
+    : (asRecord(raw)?.goals as unknown[] | undefined)
+
+  if (!Array.isArray(list)) {
+    return []
+  }
+
+  const hints: LeanGoalHint[] = []
+  for (const item of list) {
+    if (typeof item === 'string') {
+      const goal = item.trim()
+      if (goal.length > 0) {
+        hints.push({ goal, source })
+      }
+      continue
+    }
+
+    const record = asRecord(item)
+    if (!record) {
+      continue
+    }
+
+    const goalCandidate = (
+      typeof record.goal === 'string' ? record.goal
+      : typeof record.type === 'string' ? record.type
+      : typeof record.goalText === 'string' ? record.goalText
+      : null
+    )
+    if (!goalCandidate || goalCandidate.trim().length === 0) {
+      continue
+    }
+
+    const range = asRange(record.range)
+    const nodeId = typeof record.nodeId === 'string' ? record.nodeId : undefined
+
+    hints.push({
+      goal: goalCandidate.trim(),
+      range,
+      nodeId,
+      source
+    })
+  }
+
+  return hints
+}
+
+const resolveLeanGoalCommand = async (): Promise<string | null> => {
+  if (cachedGoalCommand !== undefined) {
+    return cachedGoalCommand
+  }
+
+  const commandsApi = vscode.commands as typeof vscode.commands & {
+    getCommands?: (filterInternal?: boolean) => Thenable<string[]>
+  }
+
+  if (typeof commandsApi.getCommands !== 'function') {
+    cachedGoalCommand = null
+    return null
+  }
+
+  try {
+    const all = await commandsApi.getCommands(true)
+    const matched = LEAN_GOAL_COMMAND_CANDIDATES.find((command) => all.includes(command)) ?? null
+    cachedGoalCommand = matched
+    return matched
+  }
+  catch {
+    cachedGoalCommand = null
+    return null
+  }
+}
+
+const loadGoalHintsFromLeanCommand = async (fileUri: string): Promise<LeanGoalHint[]> => {
+  const command = await resolveLeanGoalCommand()
+  if (!command) {
+    return []
+  }
+
+  const execute = vscode.commands.executeCommand as unknown as (command: string, ...args: unknown[]) => Promise<unknown>
+  try {
+    const payload = await execute(command, { fileUri })
+    return normalizeGoalHints(payload, `command:${command}`)
+  }
+  catch {
+    return []
+  }
+}
+
 const proofFlowEffects: Effects = createProofFlowEffects({
   dagExtract: {
     loadContext: async ({ fileUri }) => {
@@ -87,8 +348,22 @@ const proofFlowEffects: Effects = createProofFlowEffects({
       return {
         fileUri,
         sourceText: document.getText(),
-        diagnostics: diagnostics.map(toLeanDiagnostic)
+        diagnostics: diagnostics.map(toLeanDiagnostic),
+        goals: extractGoalHintsFromDiagnostics(diagnostics)
       }
+    },
+    loadGoals: async ({ fileUri }, context) => {
+      const uri = vscode.Uri.parse(fileUri)
+      const diagnostics = vscode.languages.getDiagnostics(uri)
+      const diagnosticHints = context.goals ?? extractGoalHintsFromDiagnostics(diagnostics)
+      const hoverHints = await extractGoalHintsFromHoverProvider(uri, diagnostics)
+      const commandHints = await loadGoalHintsFromLeanCommand(fileUri)
+
+      return [
+        ...diagnosticHints,
+        ...hoverHints,
+        ...commandHints
+      ]
     }
   },
   editorReveal: {
@@ -227,6 +502,33 @@ const maybeRecordAttempt = async (targetFileUri: string): Promise<void> => {
   })
 }
 
+const reportGoalCoverage = async (): Promise<void> => {
+  if (!app) {
+    return
+  }
+
+  const state = app.getState<ProofFlowState>().data
+  const activeFileUri = state.ui.activeFileUri
+  if (!activeFileUri) {
+    void vscode.window.showInformationMessage('[ProofFlow] No active Lean file for goal coverage.')
+    return
+  }
+
+  const dag = state.files[activeFileUri]?.dag
+  if (!dag) {
+    void vscode.window.showInformationMessage('[ProofFlow] No DAG available for active file.')
+    return
+  }
+
+  const nodes = Object.values(dag.nodes)
+  const totalNodes = nodes.length
+  const withGoal = nodes.filter((node) => typeof node.goal === 'string' && node.goal.trim().length > 0).length
+  const ratio = totalNodes > 0 ? withGoal / totalNodes : 0
+  const percent = (ratio * 100).toFixed(1)
+  const message = `[ProofFlow] Goal coverage ${withGoal}/${totalNodes} (${percent}%)`
+  void vscode.window.showInformationMessage(message)
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   let readyApp: App
 
@@ -318,6 +620,10 @@ export async function activate(context: vscode.ExtensionContext) {
     await suggestTacticsForCurrentNode()
   })
 
+  const goalCoverageReportCommand = vscode.commands.registerCommand('proof-flow.goalCoverageReport', async () => {
+    await reportGoalCoverage()
+  })
+
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
     if (!editor || !isLeanDocument(editor.document)) {
       return
@@ -374,6 +680,7 @@ export async function activate(context: vscode.ExtensionContext) {
     togglePanel,
     resetPatternsCommand,
     suggestTacticsCommand,
+    goalCoverageReportCommand,
     onEditorChange,
     onDocumentSave,
     onDiagnosticsChange,

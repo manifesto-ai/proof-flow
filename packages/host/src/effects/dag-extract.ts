@@ -5,7 +5,7 @@ import {
   type HostEffectHandler,
   type EffectPatch
 } from './types.js'
-import type { LeanContext } from '../lean/types.js'
+import type { LeanContext, LeanGoalHint } from '../lean/types.js'
 import { parseLeanContextToProofDag } from '../lean/parser.js'
 import { validateProofDag } from '../schemas/proof-dag.js'
 
@@ -15,10 +15,15 @@ export type DagExtractInput = {
 
 export type DagExtractHandler = (input: DagExtractInput) => Promise<unknown>
 export type DagExtractContextLoader = (input: DagExtractInput) => Promise<LeanContext>
+export type DagExtractGoalsLoader = (
+  input: DagExtractInput,
+  context: LeanContext
+) => Promise<readonly LeanGoalHint[] | null | undefined>
 
 export type CreateDagExtractEffectOptions = {
   extractDag?: DagExtractHandler
   loadContext?: DagExtractContextLoader
+  loadGoals?: DagExtractGoalsLoader
   now?: () => number
 }
 
@@ -80,7 +85,17 @@ const resolveProofDag = async (
     return null
   }
 
-  const context = await options.loadContext(input)
+  const baseContext = await options.loadContext(input)
+  const extraGoals = options.loadGoals
+    ? await options.loadGoals(input, baseContext)
+    : null
+  const context: LeanContext = {
+    ...baseContext,
+    goals: [
+      ...(baseContext.goals ?? []),
+      ...(extraGoals ?? [])
+    ]
+  }
   const candidate = parseLeanContextToProofDag(context, { now: () => syncedAt })
   return toProofDagOrNull(candidate)
 }

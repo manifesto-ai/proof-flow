@@ -10,10 +10,18 @@ export type LeanDiagnostic = {
   code?: string | number
 }
 
+export type LeanGoalHint = {
+  goal: string
+  range?: Range | null
+  nodeId?: string
+  source?: string
+}
+
 export type LeanContext = {
   fileUri: string
   sourceText: string
   diagnostics: readonly LeanDiagnostic[]
+  goals?: readonly LeanGoalHint[]
 }
 
 export type ParsedDiagnosticNode = {

@@ -28,6 +28,16 @@
 - ✅ v0.4 suggestion domain contract (`attempt_suggest`, `suggestions_clear`, `SuggestionState`)
 - ✅ Host suggestion effect baseline (`proof_flow.attempt.suggest`) + deterministic ranking tests
 - ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
+- 🔜 v0.4.1 Goal fidelity spike (node-level goal extraction quality)
+- 🔜 v0.4.2 Suggestion closed loop (suggest -> apply -> attempt_record)
+- 🔜 v0.4.3 Start-Here triage (unresolved/sorry priority queue)
+
+## Priority Queue
+1. P0: v0.4.1 Goal Fidelity
+2. P0: v0.4.2 Suggestion Closed Loop
+3. P0: v0.4.3 Start-Here Triage
+4. P1: v0.5 Recommendation Quality + State Hygiene
+5. P2: v0.6 Performance/CI Hardening
 
 ## Checkpoints
 
@@ -88,10 +98,43 @@
 - [x] Extension E2E: reset command/panel action -> `patterns_reset` 디스패치 검증
 - [x] WorldStore 회귀 테스트: 점(`.`) 포함 dynamic key 경로(`history`, `patterns`) 복원 무결성 검증
 
-### 9. v0.4 Core-First Suggestion Loop (Prep)
+### 9. v0.4 Core-First Suggestion Loop (Baseline)
 - [x] v0.4 실행 준비 문서 작성 (`docs/V0.4-PREP.md`)
 - [x] MEL 계약 추가: `attempt_suggest` / `suggestions_clear` + `SuggestionState`
 - [x] Host effect 추가: `proof_flow.attempt.suggest` (패턴/히스토리 기반 deterministic ranking)
 - [x] Projection 확장: selected node 추천 tactic 목록 + 근거(score/sample/category)
 - [x] Extension 트리거: command palette `proof-flow.suggestTactics` + panel action 연결
 - [x] 테스트 우선 구현: domain/host/projection/e2e 각각 최소 1개 회귀 시나리오
+
+### 10. v0.4.1 Goal Fidelity (P0)
+- [x] `LeanContext.goals` 힌트 계약 추가 + range 기반 node goal 매핑 파서 반영
+- [x] host 회귀 테스트 추가: goal-range 매핑/루트 fallback 검증
+- [x] `dag.extract` 입력 소스 확장 1차: `loadGoals` adapter hook + diagnostics/hover/command probe 수집 경로 추가
+- [x] `proof-flow.goalCoverageReport` 커맨드 추가(활성 DAG goal 채움률 즉시 측정)
+- [ ] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API) 직접 연동
+- [ ] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
+- [ ] 리포트: 정확도/누락 케이스/실패 패턴 문서화
+
+### 11. v0.4.2 Suggestion Closed Loop (P0)
+- [ ] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
+- [ ] host/app 연결: suggest 선택 -> apply effect -> `attempt_record` 자동 반영
+- [ ] 실패/성공 결과를 history/patterns/suggestions에 일관 반영
+- [ ] 통합 E2E: suggest -> apply -> record -> resuggest 시나리오 검증
+
+### 12. v0.4.3 Start-Here Triage (P0)
+- [ ] unresolved/sorry 노드 우선순위 산식 정의
+- [ ] projection에 `startHereQueue` 추가 및 panel 노출
+- [ ] 선택한 큐 항목의 editor reveal/cursor sync 일관성 검증
+- [ ] 긴 증명 파일 기준 유효성 시나리오 테스트 추가
+
+### 13. v0.5 Recommendation Quality + State Hygiene (P1)
+- [ ] 추천 스코어링 고도화: errorCategory 일치, sample, 최근성, node-local 이력 반영
+- [ ] recommendation explainability: 추천 근거 문자열/메타데이터 노출
+- [ ] suggestion TTL/상한 정책 추가(노드당 개수 제한, stale 정리)
+- [ ] world replay 무결성 테스트(정리 정책 적용 후 복원 일관성)
+
+### 14. v0.6 Performance / CI Hardening (P2)
+- [ ] 대형 증명 파일에서 incremental sync/debounce 최적화
+- [ ] 성능 회귀 측정 지표(동기화 지연, projection 렌더 시간) 추가
+- [ ] CI에 통합 시나리오 최소 1개 추가(suggest loop)
+- [ ] Manifesto core 연동 리스크 모니터링(`core#108`, `core#109`) 및 에스컬레이션 기준 유지

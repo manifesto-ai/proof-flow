@@ -118,7 +118,18 @@ describe('Host effects', () => {
           message: 'type mismatch, term has type Nat but is expected to have type Bool',
           severity: 'error',
           range: { startLine: 1, startCol: 0, endLine: 1, endCol: 12 }
-        }]
+        }],
+        goals: [
+          {
+            goal: '⊢ Nat = Bool',
+            range: { startLine: 1, startCol: 0, endLine: 1, endCol: 12 },
+            source: 'test'
+          },
+          {
+            goal: '⊢ True',
+            source: 'test'
+          }
+        ]
       }),
       now: () => 700
     })
@@ -141,6 +152,37 @@ describe('Host effects', () => {
     expect(fileState.dag?.extractedAt).toBe(700)
     expect(fileState.dag?.nodes['diag:0']?.status.kind).toBe('error')
     expect(fileState.dag?.nodes['diag:0']?.status.errorCategory).toBe('TYPE_MISMATCH')
+    expect(fileState.dag?.nodes['diag:0']?.goal).toBe('⊢ Nat = Bool')
+    expect(fileState.dag?.nodes.root?.goal).toBe('⊢ True')
+  })
+
+  it('dag.extract maps unmatched goal hints to root node', async () => {
+    const effect = createDagExtractEffect({
+      loadContext: async () => ({
+        fileUri,
+        sourceText: 'theorem demo : True := by\\n  exact True.intro',
+        diagnostics: [{
+          message: 'unknown identifier x',
+          severity: 'error',
+          range: { startLine: 1, startCol: 0, endLine: 1, endCol: 8 }
+        }],
+        goals: [{
+          goal: '⊢ fallback goal',
+          range: { startLine: 100, startCol: 0, endLine: 100, endCol: 20 },
+          source: 'test'
+        }]
+      }),
+      now: () => 701
+    })
+
+    const patches = await effect({ fileUri }, { snapshot: { data: {} } })
+    const mergePatch = patches[0]
+    if (!mergePatch || mergePatch.op !== 'merge') {
+      throw new Error('Expected merge patch')
+    }
+
+    const fileState = mergePatch.value[fileUri] as { dag: ProofDAG | null }
+    expect(fileState.dag?.nodes.root?.goal).toBe('⊢ fallback goal')
   })
 
   it('dag.extract returns null dag when candidate validation fails', async () => {
@@ -167,6 +209,42 @@ describe('Host effects', () => {
         }
       }
     }])
+  })
+
+  it('dag.extract merges goal hints from loadGoals adapter', async () => {
+    const effect = createDagExtractEffect({
+      loadContext: async () => ({
+        fileUri,
+        sourceText: 'theorem demo : True := by\\n  exact True.intro',
+        diagnostics: [{
+          message: 'type mismatch',
+          severity: 'error',
+          range: { startLine: 1, startCol: 0, endLine: 1, endCol: 12 }
+        }],
+        goals: [{
+          goal: '⊢ from context root',
+          source: 'context'
+        }]
+      }),
+      loadGoals: async () => ([
+        {
+          goal: '⊢ from adapter diagnostic',
+          range: { startLine: 1, startCol: 0, endLine: 1, endCol: 12 },
+          source: 'adapter'
+        }
+      ]),
+      now: () => 702
+    })
+
+    const patches = await effect({ fileUri }, { snapshot: { data: {} } })
+    const mergePatch = patches[0]
+    if (!mergePatch || mergePatch.op !== 'merge') {
+      throw new Error('Expected merge patch')
+    }
+
+    const dag = (mergePatch.value[fileUri] as { dag: ProofDAG | null }).dag
+    expect(dag?.nodes['diag:0']?.goal).toBe('⊢ from adapter diagnostic')
+    expect(dag?.nodes.root?.goal).toBe('⊢ from context root')
   })
 
   it('editor.reveal resolves node range from snapshot and calls adapter', async () => {

@@ -7,7 +7,12 @@ import type {
   StatusKind
 } from '@proof-flow/schema'
 import { classifyLeanErrorCategory } from './error-category.js'
-import type { LeanContext, LeanDiagnostic, ParsedDiagnosticNode } from './types.js'
+import type {
+  LeanContext,
+  LeanDiagnostic,
+  LeanGoalHint,
+  ParsedDiagnosticNode
+} from './types.js'
 
 export type ParseLeanDagOptions = {
   now?: () => number
@@ -57,6 +62,49 @@ const compareRange = (left: Range, right: Range): number => {
     return left.endLine - right.endLine
 
   return left.endCol - right.endCol
+}
+
+const rangeArea = (range: Range): number => {
+  const lineSpan = Math.max(range.endLine - range.startLine + 1, 1)
+  const colSpan = lineSpan === 1
+    ? Math.max(range.endCol - range.startCol + 1, 1)
+    : Math.max(range.endCol + 1, 1)
+  return lineSpan * 100_000 + colSpan
+}
+
+const containsRange = (container: Range, target: Range): boolean => {
+  if (container.startLine > target.startLine || container.endLine < target.endLine) {
+    return false
+  }
+
+  if (container.startLine === target.startLine && container.startCol > target.startCol) {
+    return false
+  }
+
+  if (container.endLine === target.endLine && container.endCol < target.endCol) {
+    return false
+  }
+
+  return true
+}
+
+const overlapsRange = (left: Range, right: Range): boolean => {
+  const comparePosition = (
+    lineA: number,
+    colA: number,
+    lineB: number,
+    colB: number
+  ): number => {
+    if (lineA !== lineB) {
+      return lineA - lineB
+    }
+    return colA - colB
+  }
+
+  return !(
+    comparePosition(left.endLine, left.endCol, right.startLine, right.startCol) < 0
+    || comparePosition(right.endLine, right.endCol, left.startLine, left.startCol) < 0
+  )
 }
 
 const getSeverityRank = (severity?: string): number => {
@@ -189,6 +237,82 @@ const inferRootKind = (sourceText: string): NodeKind => {
   return inferKind(head)
 }
 
+const normalizeGoal = (goal: string): string | null => {
+  const normalized = goal
+    .replace(/\r\n/g, '\n')
+    .trim()
+
+  if (normalized.length === 0) {
+    return null
+  }
+
+  return normalized
+}
+
+const resolveGoalTargetNodeId = (
+  hint: LeanGoalHint,
+  nodes: Record<string, ProofNode>
+): string => {
+  const nodeId = hint.nodeId
+  if (typeof nodeId === 'string' && nodeId.length > 0 && nodes[nodeId]) {
+    return nodeId
+  }
+
+  if (!hint.range) {
+    return 'root'
+  }
+
+  const goalRange = normalizeRange(hint.range)
+  const allNodes = Object.values(nodes)
+
+  const containing = allNodes
+    .filter((node) => containsRange(node.leanRange, goalRange))
+    .sort((left, right) => {
+      const areaOrder = rangeArea(left.leanRange) - rangeArea(right.leanRange)
+      if (areaOrder !== 0) {
+        return areaOrder
+      }
+      return left.id.localeCompare(right.id)
+    })
+
+  if (containing.length > 0) {
+    return containing[0]!.id
+  }
+
+  const overlapping = allNodes
+    .filter((node) => overlapsRange(node.leanRange, goalRange))
+    .sort((left, right) => compareRange(left.leanRange, right.leanRange))
+
+  if (overlapping.length > 0) {
+    return overlapping[0]!.id
+  }
+
+  return 'root'
+}
+
+const applyGoalHints = (
+  nodes: Record<string, ProofNode>,
+  hints: readonly LeanGoalHint[]
+): void => {
+  for (const hint of hints) {
+    const goal = normalizeGoal(hint.goal)
+    if (!goal) {
+      continue
+    }
+
+    const targetNodeId = resolveGoalTargetNodeId(hint, nodes)
+    const targetNode = nodes[targetNodeId]
+    if (!targetNode) {
+      continue
+    }
+
+    // Keep first-mapped goal as canonical for the node to avoid noisy merges.
+    if (targetNode.goal === null) {
+      targetNode.goal = goal
+    }
+  }
+}
+
 export const parseLeanContextToProofDag = (
   context: LeanContext,
   options: ParseLeanDagOptions = {}
@@ -251,6 +375,8 @@ export const parseLeanContextToProofDag = (
       dependencies: []
     }
   }
+
+  applyGoalHints(nodes, context.goals ?? [])
 
   return {
     fileUri: context.fileUri,
