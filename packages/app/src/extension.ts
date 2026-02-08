@@ -58,6 +58,15 @@ type GoalSourceStats = {
 
 const goalSourceStatsByFileUri = new Map<string, GoalSourceStats>()
 
+type GoalCoverageSnapshot = {
+  fileUri: string
+  totalNodes: number
+  withGoal: number
+  ratio: number
+  percent: string
+  sources: GoalSourceStats | null
+}
+
 let cachedGoalCommands: string[] | undefined
 const cachedLeanExtensionApiMethods = new Map<string, (...args: unknown[]) => unknown>()
 let cachedLeanClientProvider: Record<string, unknown> | undefined
@@ -1289,17 +1298,38 @@ const reportGoalCoverage = async (): Promise<void> => {
     return
   }
 
+  const snapshot = getGoalCoverageSnapshot()
+  if (!snapshot) {
+    return
+  }
+
+  const stats = snapshot.sources
+  const sourceSummary = stats
+    ? ` | hints s/d/h/a/c=${stats.stableHints}/${stats.diagnosticHints}/${stats.hoverHints}/${stats.apiHints}/${stats.commandHints}`
+      + (stats.stableMethodsUsed.length > 0 ? ` | stable=${stats.stableMethodsUsed.join(',')}` : '')
+      + (stats.apiMethodsUsed.length > 0 ? ` | api=${stats.apiMethodsUsed.join(',')}` : '')
+      + (stats.commandsUsed.length > 0 ? ` | cmds=${stats.commandsUsed.join(',')}` : '')
+    : ''
+  const message = `[ProofFlow] Goal coverage ${snapshot.withGoal}/${snapshot.totalNodes} (${snapshot.percent}%)${sourceSummary}`
+  void vscode.window.showInformationMessage(message)
+}
+
+const getGoalCoverageSnapshot = (): GoalCoverageSnapshot | null => {
+  if (!app) {
+    return null
+  }
+
   const state = app.getState<ProofFlowState>().data
   const activeFileUri = state.ui.activeFileUri
   if (!activeFileUri) {
     void vscode.window.showInformationMessage('[ProofFlow] No active Lean file for goal coverage.')
-    return
+    return null
   }
 
   const dag = state.files[activeFileUri]?.dag
   if (!dag) {
     void vscode.window.showInformationMessage('[ProofFlow] No DAG available for active file.')
-    return
+    return null
   }
 
   const nodes = Object.values(dag.nodes)
@@ -1307,15 +1337,15 @@ const reportGoalCoverage = async (): Promise<void> => {
   const withGoal = nodes.filter((node) => typeof node.goal === 'string' && node.goal.trim().length > 0).length
   const ratio = totalNodes > 0 ? withGoal / totalNodes : 0
   const percent = (ratio * 100).toFixed(1)
-  const stats = goalSourceStatsByFileUri.get(activeFileUri)
-  const sourceSummary = stats
-    ? ` | hints s/d/h/a/c=${stats.stableHints}/${stats.diagnosticHints}/${stats.hoverHints}/${stats.apiHints}/${stats.commandHints}`
-      + (stats.stableMethodsUsed.length > 0 ? ` | stable=${stats.stableMethodsUsed.join(',')}` : '')
-      + (stats.apiMethodsUsed.length > 0 ? ` | api=${stats.apiMethodsUsed.join(',')}` : '')
-      + (stats.commandsUsed.length > 0 ? ` | cmds=${stats.commandsUsed.join(',')}` : '')
-    : ''
-  const message = `[ProofFlow] Goal coverage ${withGoal}/${totalNodes} (${percent}%)${sourceSummary}`
-  void vscode.window.showInformationMessage(message)
+
+  return {
+    fileUri: activeFileUri,
+    totalNodes,
+    withGoal,
+    ratio,
+    percent,
+    sources: goalSourceStatsByFileUri.get(activeFileUri) ?? null
+  }
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -1443,6 +1473,10 @@ export async function activate(context: vscode.ExtensionContext) {
     await reportGoalCoverage()
   })
 
+  const goalCoverageSnapshotCommand = vscode.commands.registerCommand('proof-flow.goalCoverageSnapshot', async () => (
+    getGoalCoverageSnapshot()
+  ))
+
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
     if (!editor || !isLeanDocument(editor.document)) {
       return
@@ -1500,6 +1534,7 @@ export async function activate(context: vscode.ExtensionContext) {
     resetPatternsCommand,
     suggestTacticsCommand,
     goalCoverageReportCommand,
+    goalCoverageSnapshotCommand,
     onEditorChange,
     onDocumentSave,
     onDiagnosticsChange,

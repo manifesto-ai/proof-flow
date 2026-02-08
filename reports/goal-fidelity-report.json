@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-02-08T04:21:01.154Z",
+  "workspace": "/Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow",
+  "totalNodes": 2,
+  "withGoal": 0,
+  "ratio": 0,
+  "percent": "0.0",
+  "samples": [
+    {
+      "sample": "samples/goal-fidelity/GoalFidelitySamples/Basic.lean",
+      "fileUri": "file:///Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity/GoalFidelitySamples/Basic.lean",
+      "totalNodes": 1,
+      "withGoal": 0,
+      "ratio": 0,
+      "percent": "0.0",
+      "sources": {
+        "stableHints": 0,
+        "diagnosticHints": 0,
+        "hoverHints": 0,
+        "apiHints": 0,
+        "commandHints": 0,
+        "stableMethodsUsed": [],
+        "apiMethodsUsed": [],
+        "commandsUsed": []
+      }
+    },
+    {
+      "sample": "samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean",
+      "fileUri": "file:///Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean",
+      "totalNodes": 1,
+      "withGoal": 0,
+      "ratio": 0,
+      "percent": "0.0",
+      "sources": {
+        "stableHints": 0,
+        "diagnosticHints": 0,
+        "hoverHints": 0,
+        "apiHints": 0,
+        "commandHints": 0,
+        "stableMethodsUsed": [],
+        "apiMethodsUsed": [],
+        "commandsUsed": []
+      }
+    }
+  ]
+}

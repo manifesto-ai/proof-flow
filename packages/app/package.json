@@ -13,7 +13,8 @@
     "onCommand:proof-flow.hello",
     "onCommand:proof-flow.patternsReset",
     "onCommand:proof-flow.suggestTactics",
-    "onCommand:proof-flow.goalCoverageReport"
+    "onCommand:proof-flow.goalCoverageReport",
+    "onCommand:proof-flow.goalCoverageSnapshot"
   ],
   "contributes": {
     "commands": [
@@ -32,6 +33,10 @@
       {
         "command": "proof-flow.goalCoverageReport",
         "title": "ProofFlow: Goal Coverage Report"
+      },
+      {
+        "command": "proof-flow.goalCoverageSnapshot",
+        "title": "ProofFlow: Goal Coverage Snapshot (Debug)"
       }
     ]
   },

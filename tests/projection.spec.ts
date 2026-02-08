@@ -280,6 +280,11 @@ describe('Projection selector', () => {
       'exact',
       'aesop'
     ])
+    expect(projection.startHereQueue).toHaveLength(1)
+    expect(projection.startHereQueue[0]).toMatchObject({
+      nodeId: 'child',
+      statusKind: 'error'
+    })
   })
 
   it('returns safe null projection when computed dag is absent', () => {
@@ -302,5 +307,106 @@ describe('Projection selector', () => {
     expect(projection.selectedNodeHistory).toBeNull()
     expect(projection.patternInsights).toEqual([])
     expect(projection.selectedNodeSuggestions).toEqual([])
+    expect(projection.startHereQueue).toEqual([])
+  })
+
+  it('builds start-here queue for long proofs with deterministic priority', () => {
+    const longDagNodes: Record<string, any> = {}
+    for (let index = 0; index < 25; index += 1) {
+      const nodeId = `n${index}`
+      const statusKind = index % 5 === 0
+        ? 'sorry'
+        : index % 3 === 0
+          ? 'error'
+          : 'resolved'
+      longDagNodes[nodeId] = {
+        id: nodeId,
+        kind: 'have',
+        label: nodeId,
+        leanRange: {
+          startLine: 10 + index,
+          startCol: 0,
+          endLine: 10 + index,
+          endCol: 20
+        },
+        goal: null,
+        status: {
+          kind: statusKind,
+          errorMessage: statusKind === 'resolved' ? null : 'pending',
+          errorCategory: statusKind === 'error' ? 'TACTIC_FAILED' : statusKind === 'sorry' ? 'UNSOLVED_GOALS' : null
+        },
+        children: [],
+        dependencies: []
+      }
+    }
+
+    const historyNodes: Record<string, any> = {}
+    for (let index = 0; index < 25; index += 1) {
+      historyNodes[`n${index}`] = {
+        nodeId: `n${index}`,
+        attempts: {},
+        currentStreak: 0,
+        totalAttempts: index % 4,
+        lastAttemptAt: null,
+        lastSuccessAt: null,
+        lastFailureAt: null
+      }
+    }
+
+    const projection = selectProjectionState(makeState({
+      data: {
+        ...baseData(),
+        history: {
+          version: '0.2.0',
+          files: {
+            'file:///proof.lean': {
+              fileUri: 'file:///proof.lean',
+              nodes: historyNodes,
+              totalAttempts: 30,
+              updatedAt: 1
+            }
+          }
+        },
+        ui: {
+          ...baseData().ui,
+          selectedNodeId: null,
+          cursorNodeId: null
+        }
+      },
+      computed: {
+        'computed.activeDag': {
+          fileUri: 'file:///proof.lean',
+          rootIds: ['n0'],
+          extractedAt: 1,
+          metrics: {
+            totalNodes: 25,
+            resolvedCount: 13,
+            errorCount: 7,
+            sorryCount: 5,
+            inProgressCount: 0,
+            maxDepth: 2
+          },
+          nodes: longDagNodes
+        },
+        'computed.summaryMetrics': {
+          totalNodes: 25,
+          resolvedCount: 13,
+          errorCount: 7,
+          sorryCount: 5,
+          inProgressCount: 0,
+          maxDepth: 2
+        },
+        'computed.selectedNode': null
+      }
+    }))
+
+    expect(projection.startHereQueue.length).toBeLessThanOrEqual(10)
+    expect(projection.startHereQueue[0]?.statusKind).toBe('sorry')
+    expect(projection.startHereQueue.every((entry) => entry.statusKind !== 'resolved')).toBe(true)
+    for (let index = 1; index < projection.startHereQueue.length; index += 1) {
+      expect(projection.startHereQueue[index - 1]!.priority).toBeGreaterThanOrEqual(
+        projection.startHereQueue[index]!.priority
+      )
+    }
   })
 })

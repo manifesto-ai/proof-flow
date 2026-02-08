@@ -294,7 +294,8 @@ const env = vi.hoisted(() => {
     activeDag: null,
     summaryMetrics: null,
     nodes: [],
-    selectedNode: null
+    selectedNode: null,
+    startHereQueue: []
   }))
 
   return {
@@ -482,6 +483,21 @@ describe('Extension E2E flow', () => {
       fileUri: env.leanUri.toString(),
       nodeId: 'root'
     })
+
+    await extension.deactivate()
+  })
+
+  it('dispatches node_select from panel selection action', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+
+    const panel = env.getPanel() as { actions: { onNodeSelect: (nodeId: string) => Promise<void> } }
+    await panel.actions.onNodeSelect('root')
+
+    const nodeSelectCall = env.getActCalls().findLast((call) => call.type === 'node_select')
+    expect(nodeSelectCall?.input).toMatchObject({ nodeId: 'root' })
 
     await extension.deactivate()
   })

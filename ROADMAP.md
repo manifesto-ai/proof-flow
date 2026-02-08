@@ -30,16 +30,14 @@
 - ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
 - ✅ v0.4.1 stable goal source integration (`$/lean/plainGoal`, `$/lean/plainTermGoal`) + source stats
 - ✅ v0.4.2 closed-loop baseline (`attempt_apply` effect + panel apply + post-apply re-suggest)
-- 🔜 v0.4.1 Goal fidelity spike (node-level goal extraction quality)
-- 🔜 v0.4.2 Suggestion closed loop (suggest -> apply -> attempt_record)
-- 🔜 v0.4.3 Start-Here triage (unresolved/sorry priority queue)
+- ✅ v0.4.2 Suggestion closed loop integration test (`tests/suggestion-closed-loop.spec.ts`)
+- ✅ v0.4.3 Start-Here triage (priority queue + panel + tests)
+- ⚠️ v0.4.1 Goal fidelity spike executed (`reports/goal-fidelity-report.json`: 0.0% goal coverage)
 
 ## Priority Queue
-1. P0: v0.4.1 Goal Fidelity
-2. P0: v0.4.2 Suggestion Closed Loop
-3. P0: v0.4.3 Start-Here Triage
-4. P1: v0.5 Recommendation Quality + State Hygiene
-5. P2: v0.6 Performance/CI Hardening
+1. P0: Goal fidelity recovery (`goal != null` coverage from real Lean workflows)
+2. P1: v0.5 Recommendation Quality + State Hygiene
+3. P2: v0.6 Performance/CI Hardening
 
 ## Checkpoints
 
@@ -116,20 +114,24 @@
 - [x] command probe 2차 강화: Lean goal command 동적 탐색 + 다중 호출 시그니처 + source stats 집계
 - [x] extension API probe 추가: `leanprover.lean4` export method 탐색 + source stats 집계
 - [x] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API: `$/lean/plainGoal`, `$/lean/plainTermGoal`) 직접 연동
-- [ ] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
-- [ ] 리포트: 정확도/누락 케이스/실패 패턴 문서화
+- [x] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
+- [x] 리포트: 정확도/누락 케이스/실패 패턴 문서화 (`docs/GOAL-FIDELITY-SPIKE.md`)
+- [ ] P0 복구 1: extension schema 로딩 경로를 `context.extensionUri` 기준으로 전환 (workspace root 결합 제거)
+- [ ] P0 복구 2: Lean 준비 상태 게이팅(ready/sync 안정화) 후 goal snapshot 수집
+- [ ] P0 복구 3: goal source probe 실패 원인/코드 로깅 및 snapshot에 원인 필드 추가
+- [ ] P0 복구 4: spike CI 가드레일(최소 1 fixture에서 `withGoal > 0`) 추가
 
 ### 11. v0.4.2 Suggestion Closed Loop (P0)
 - [x] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
 - [x] host/app 연결: suggest 선택 -> apply effect -> `attempt_record` 자동 반영
 - [x] 실패/성공 결과를 history/patterns/suggestions에 일관 반영
-- [ ] 통합 E2E: suggest -> apply -> record -> resuggest 시나리오 검증
+- [x] 통합 E2E: suggest -> apply -> record -> resuggest 시나리오 검증
 
 ### 12. v0.4.3 Start-Here Triage (P0)
-- [ ] unresolved/sorry 노드 우선순위 산식 정의
-- [ ] projection에 `startHereQueue` 추가 및 panel 노출
-- [ ] 선택한 큐 항목의 editor reveal/cursor sync 일관성 검증
-- [ ] 긴 증명 파일 기준 유효성 시나리오 테스트 추가
+- [x] unresolved/sorry 노드 우선순위 산식 정의
+- [x] projection에 `startHereQueue` 추가 및 panel 노출
+- [x] 선택한 큐 항목의 editor reveal/cursor sync 일관성 검증
+- [x] 긴 증명 파일 기준 유효성 시나리오 테스트 추가
 
 ### 13. v0.5 Recommendation Quality + State Hygiene (P1)
 - [ ] 추천 스코어링 고도화: errorCategory 일치, sample, 최근성, node-local 이력 반영

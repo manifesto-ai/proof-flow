@@ -12,6 +12,14 @@ import type {
 } from '@proof-flow/schema'
 
 const MIN_PATTERN_SAMPLE = 3
+const START_HERE_LIMIT = 10
+
+const START_HERE_STATUS_WEIGHT: Record<ProofNode['status']['kind'], number> = {
+  sorry: 120,
+  error: 100,
+  in_progress: 80,
+  resolved: 0
+}
 
 export type ProjectionHeatLevel = 'none' | 'low' | 'medium' | 'high'
 
@@ -79,6 +87,16 @@ export type ProjectionSuggestion = {
   generatedAt: number
 }
 
+export type ProjectionStartHereEntry = {
+  nodeId: string
+  label: string
+  statusKind: ProofNode['status']['kind']
+  startLine: number
+  attemptCount: number
+  priority: number
+  reason: string
+}
+
 export type ProjectionDashboard = {
   totalPatterns: number
   qualifiedPatterns: number
@@ -115,6 +133,7 @@ export type ProjectionState = {
   selectedNodeHistory: ProjectionNodeHistory
   patternInsights: ProjectionPatternInsight[]
   selectedNodeSuggestions: ProjectionSuggestion[]
+  startHereQueue: ProjectionStartHereEntry[]
 }
 
 type FileHistory = ProofFlowState['history']['files'][string]
@@ -427,6 +446,89 @@ const toProjectionSuggestions = (
     .filter((entry): entry is ProjectionSuggestion => entry !== null)
 }
 
+const toStartHereQueue = (nodes: ProjectionNode[]): ProjectionStartHereEntry[] => {
+  const unresolved = nodes.filter((node) => node.statusKind !== 'resolved')
+
+  const queue = unresolved.map((node): ProjectionStartHereEntry => {
+    let priority = START_HERE_STATUS_WEIGHT[node.statusKind]
+    const reasons: string[] = []
+
+    if (node.statusKind === 'sorry') {
+      reasons.push('placeholder')
+    }
+    else if (node.statusKind === 'error') {
+      reasons.push('error')
+    }
+    else if (node.statusKind === 'in_progress') {
+      reasons.push('in-progress')
+    }
+
+    if (node.attemptCount === 0) {
+      priority += 20
+      reasons.push('unattempted')
+    }
+    else if (node.attemptCount <= 2) {
+      priority += 8
+      reasons.push('low-attempt')
+    }
+    else if (node.attemptCount >= 6) {
+      priority -= 6
+      reasons.push('high-attempt')
+    }
+
+    if (node.errorCategory === 'UNSOLVED_GOALS') {
+      priority += 7
+      reasons.push('unsolved-goals')
+    }
+    else if (node.errorCategory === 'TACTIC_FAILED') {
+      priority += 4
+      reasons.push('tactic-failed')
+    }
+    else if (node.errorCategory === 'TIMEOUT') {
+      priority += 3
+      reasons.push('timeout')
+    }
+    else if (node.errorCategory === 'TYPE_MISMATCH') {
+      priority += 2
+      reasons.push('type-mismatch')
+    }
+
+    const lineBias = Math.max(0, 3 - Math.floor(node.startLine / 200))
+    if (lineBias > 0) {
+      priority += lineBias
+      reasons.push('near-top')
+    }
+
+    return {
+      nodeId: node.id,
+      label: node.label,
+      statusKind: node.statusKind,
+      startLine: node.startLine,
+      attemptCount: node.attemptCount,
+      priority,
+      reason: reasons.join(', ')
+    }
+  })
+
+  return queue
+    .sort((left, right) => {
+      if (left.priority !== right.priority) {
+        return right.priority - left.priority
+      }
+
+      if (left.attemptCount !== right.attemptCount) {
+        return left.attemptCount - right.attemptCount
+      }
+
+      if (left.startLine !== right.startLine) {
+        return left.startLine - right.startLine
+      }
+
+      return left.nodeId.localeCompare(right.nodeId)
+    })
+    .slice(0, START_HERE_LIMIT)
+}
+
 export const selectProjectionState = (appState: AppState<unknown>): ProjectionState => {
   const state = appState.data as ProofFlowState
   const computed = appState.computed as Record<string, unknown>
@@ -455,6 +557,7 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
   const preferredCategory = selectedNodeRaw?.status.errorCategory ?? null
   const patternInsights = toPatternInsights(normalizedPatterns, preferredCategory)
   const selectedNodeSuggestions = toProjectionSuggestions(state, selectedNodeId)
+  const startHereQueue = toStartHereQueue(nodes)
 
   return {
     ui: {
@@ -485,6 +588,7 @@ export const selectProjectionState = (appState: AppState<unknown>): ProjectionSt
     selectedNode: selectedNodeRaw ? toProjectionNode(selectedNodeRaw, nodeAttempts[selectedNodeRaw.id] ?? 0) : null,
     selectedNodeHistory,
     patternInsights,
-    selectedNodeSuggestions
+    selectedNodeSuggestions,
+    startHereQueue
   }
 }

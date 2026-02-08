@@ -68,7 +68,8 @@ const initialProjectionState = (): ProjectionState => ({
   selectedNode: null,
   selectedNodeHistory: null,
   patternInsights: [],
-  selectedNodeSuggestions: []
+  selectedNodeSuggestions: [],
+  startHereQueue: []
 })
 
 const initialStateForHtml = (state: ProjectionState | null): string => {
@@ -192,6 +193,16 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     .node.heat-medium { border-left: 3px solid #8f6d2e; }
     .node.heat-high { border-left: 3px solid #9b3f4f; }
 
+    .triage-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      text-align: left;
+      margin: 6px 0;
+    }
+
     .status { font-weight: 700; }
     .status.resolved { color: var(--ok); }
     .status.error { color: var(--err); }
@@ -213,6 +224,11 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 <body>
   <div class="card">
     <div class="row" id="summary"></div>
+  </div>
+
+  <div class="card">
+    <div class="meta" style="margin-bottom: 4px;">Start Here Queue</div>
+    <div id="startHere"></div>
   </div>
 
   <div class="card">
@@ -272,6 +288,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
     let scrollRenderQueued = false;
 
     const summaryEl = document.getElementById('summary');
+    const startHereEl = document.getElementById('startHere');
     const activeFileEl = document.getElementById('activeFile');
     const visibleInfoEl = document.getElementById('visibleInfo');
     const nodesEl = document.getElementById('nodes');
@@ -395,6 +412,33 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
 
       visibleInfoEl.textContent = 'Visible ' + visibleNodes.length + ' / ' + state.nodes.length
         + ' | Query: ' + (view.query.trim().length > 0 ? view.query.trim() : '(none)');
+    };
+
+    const renderStartHere = () => {
+      const queue = Array.isArray(state.startHereQueue) ? state.startHereQueue : [];
+      if (queue.length === 0) {
+        startHereEl.innerHTML = '<div class="empty">No unresolved/sorry nodes.</div>';
+        return;
+      }
+
+      startHereEl.innerHTML = queue
+        .slice(0, 10)
+        .map((entry) => {
+          const selected = state.ui.selectedNodeId === entry.nodeId || state.ui.cursorNodeId === entry.nodeId;
+          return ''
+            + '<button class="btn triage-item' + (selected ? ' selected' : '') + '" data-triage-node-id="' + escapeHtml(entry.nodeId) + '">'
+            + '  <span>'
+            + escapeHtml(entry.nodeId)
+            + ' · '
+            + escapeHtml(entry.statusKind)
+            + ' · line ' + entry.startLine
+            + ' · attempts ' + entry.attemptCount
+            + ' · p=' + entry.priority
+            + '  </span>'
+            + '  <span class="meta">' + escapeHtml(entry.reason || '') + '</span>'
+            + '</button>';
+        })
+        .join('');
     };
 
     const renderNodeWindow = () => {
@@ -546,6 +590,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         nodesEl.scrollTop = 0;
       }
       updateSummary();
+      renderStartHere();
       renderNodeWindow();
       renderSelected();
 
@@ -618,6 +663,23 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         type: 'applySuggestion',
         payload: { tacticKey }
       });
+    });
+
+    startHereEl.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const row = target.closest('[data-triage-node-id]');
+      if (!(row instanceof HTMLElement)) {
+        return;
+      }
+
+      const nodeId = row.getAttribute('data-triage-node-id');
+      if (nodeId) {
+        vscode.postMessage({ type: 'nodeClick', payload: { nodeId } });
+      }
     });
 
     document.getElementById('toggleLayout').addEventListener('click', () => {
