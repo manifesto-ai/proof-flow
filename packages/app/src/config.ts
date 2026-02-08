@@ -1,4 +1,10 @@
-import { createApp, type App, type AppConfig, type Effects } from '@manifesto-ai/app'
+import {
+  createApp,
+  createSilentPolicyService,
+  type App,
+  type AppConfig,
+  type Effects
+} from '@manifesto-ai/app'
 
 export type ProofFlowAppOptions = {
   schema: string
@@ -15,6 +21,8 @@ export const createProofFlowApp = (options: ProofFlowAppOptions): App => {
     schema: options.schema,
     effects: options.effects,
     world: options.world,
+    // Keep governance explicit: single-user local workflow auto-approves.
+    policyService: createSilentPolicyService(),
     validation: { effects: 'strict' },
     actorPolicy: {
       mode: 'require',

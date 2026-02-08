@@ -1279,8 +1279,8 @@ ErrorCategory assigned by Host in `dag.extract` handler. Rule-based pattern matc
 **AppConfig (§8):**
 - [x] `createApp(config)` with all required fields
 - [x] `validation.effects: 'strict'`
-- [ ] Auto-approve PolicyService
-- [ ] App applies `withPlatformNamespaces()` (APP-NS-1)
+- [x] Auto-approve PolicyService
+- [x] App applies `withPlatformNamespaces()` (APP-NS-1)
 
 **Lifecycle (§9):**
 - [x] `activate` → `app.ready()` before `app.act()`
@@ -1289,21 +1289,21 @@ ErrorCategory assigned by Host in `dag.extract` handler. Rule-based pattern matc
 - [x] State reads via `app.subscribe()`
 
 **Forbidden Patterns (§12):**
-- [ ] FORBID-1 through FORBID-10 verified
+- [x] FORBID-1 through FORBID-10 verified
 
 **Package Structure (§4):**
-- [ ] PKG-1 through PKG-4 verified
+- [x] PKG-1 through PKG-4 verified
 
 ### 14.2 Manifesto Compliance
 
 Minimal Compliance (App SPEC v2.0.0 §20.1):
-- [ ] App interface (§6)
-- [ ] Lifecycle state machine (§7)
-- [ ] HostExecutor (§8)
-- [ ] WorldStore core ops (§9)
-- [ ] Layer boundaries (§4)
-- [ ] Platform namespace support (App SPEC v2.1.0 patch)
-- [ ] `$mel` hash exclusion (World SPEC v2.0.3 patch)
+- [x] App interface (§6)
+- [x] Lifecycle state machine (§7)
+- [x] HostExecutor (§8)
+- [x] WorldStore core ops (§9)
+- [x] Layer boundaries (§4)
+- [x] Platform namespace support (App SPEC v2.1.0 patch)
+- [x] `$mel` hash exclusion (World SPEC v2.0.3 patch)
 
 ---
 
