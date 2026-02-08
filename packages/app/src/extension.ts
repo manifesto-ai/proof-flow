@@ -106,10 +106,105 @@ type GoalCoverageSnapshot = {
   readiness: GoalCoverageReadiness
 }
 
+type DagSyncReason = 'startup' | 'activate' | 'save' | 'diagnostics' | 'apply'
+
+type DagSyncQueueEntry = {
+  timer: ReturnType<typeof setTimeout> | null
+  dueAt: number | null
+  running: boolean
+  queued: boolean
+  pendingReason: DagSyncReason
+  afterSyncTasks: Array<() => Promise<void>>
+  waiters: Array<() => void>
+  lastCompletedAt: number | null
+}
+
+type DagSyncPerfStats = {
+  scheduled: number
+  executed: number
+  deduped: number
+  queuedWhileRunning: number
+  totalDurationMs: number
+  maxDurationMs: number
+  lastDurationMs: number
+  byReason: Record<DagSyncReason, number>
+}
+
+type ProjectionPerfStats = {
+  updates: number
+  totalSelectMs: number
+  maxSelectMs: number
+  lastSelectMs: number
+  totalPanelMs: number
+  maxPanelMs: number
+  lastPanelMs: number
+}
+
+type ExtensionPerformanceSnapshot = {
+  collectedAt: number
+  dagSync: {
+    scheduled: number
+    executed: number
+    deduped: number
+    queuedWhileRunning: number
+    averageDurationMs: number
+    maxDurationMs: number
+    lastDurationMs: number
+    byReason: Record<DagSyncReason, number>
+  }
+  projection: {
+    updates: number
+    averageSelectMs: number
+    maxSelectMs: number
+    lastSelectMs: number
+    averagePanelMs: number
+    maxPanelMs: number
+    lastPanelMs: number
+  }
+  queue: {
+    trackedFiles: number
+    pendingTimers: number
+    runningFiles: number
+  }
+}
+
 let cachedGoalCommands: string[] | undefined
 const cachedLeanExtensionApiMethods = new Map<string, (...args: unknown[]) => unknown>()
 let cachedLeanClientProvider: Record<string, unknown> | undefined
 let lastLeanClientProviderMissAt = 0
+const dagSyncQueueByFileUri = new Map<string, DagSyncQueueEntry>()
+
+const createDagSyncReasonCounts = (): Record<DagSyncReason, number> => ({
+  startup: 0,
+  activate: 0,
+  save: 0,
+  diagnostics: 0,
+  apply: 0
+})
+
+const createDagSyncPerfStats = (): DagSyncPerfStats => ({
+  scheduled: 0,
+  executed: 0,
+  deduped: 0,
+  queuedWhileRunning: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0,
+  lastDurationMs: 0,
+  byReason: createDagSyncReasonCounts()
+})
+
+const createProjectionPerfStats = (): ProjectionPerfStats => ({
+  updates: 0,
+  totalSelectMs: 0,
+  maxSelectMs: 0,
+  lastSelectMs: 0,
+  totalPanelMs: 0,
+  maxPanelMs: 0,
+  lastPanelMs: 0
+})
+
+let dagSyncPerfStats = createDagSyncPerfStats()
+let projectionPerfStats = createProjectionPerfStats()
 
 const LEAN_EXTENSION_IDS = [
   'leanprover.lean4'
@@ -128,6 +223,7 @@ const GOAL_READINESS_TIMEOUT_MS = 12000
 const GOAL_READINESS_POLL_MS = 200
 const GOAL_PROBE_FAILURE_LIMIT = 12
 const GOAL_FALLBACK_STABILIZE_MS = 3500
+const GOAL_STABLE_EMPTY_RESPONSE_STABILIZE_MS = 6000
 const GOAL_POSITION_SCAN_LIMIT = 220
 const GOAL_POSITION_LIMIT = 14
 const STABLE_REQUEST_MAX_ATTEMPTS = 4
@@ -135,6 +231,14 @@ const STABLE_REQUEST_RETRY_BASE_MS = 120
 const GOAL_ALERT_MIN_HINTS = 3
 const GOAL_FALLBACK_DOMINANCE_THRESHOLD = 0.7
 const GOAL_DECLARATION_DOMINANCE_THRESHOLD = 0.8
+const DAG_SYNC_MIN_INTERVAL_MS = 120
+const DAG_SYNC_DEBOUNCE_BY_REASON: Record<DagSyncReason, number> = {
+  startup: 0,
+  activate: 80,
+  save: 120,
+  diagnostics: 220,
+  apply: 0
+}
 const LEAN_GOAL_COMMAND_SAFE_PATTERNS = [
   /^lean4\.(?:infoview\.)?(?:api\.)?getGoals$/i,
   /^lean4\.goalState$/i,
@@ -1694,6 +1798,241 @@ const actSafely = async (type: string, input?: unknown): Promise<void> => {
   }
 }
 
+const resetPerformanceStats = (): void => {
+  dagSyncPerfStats = createDagSyncPerfStats()
+  projectionPerfStats = createProjectionPerfStats()
+}
+
+const clearDagSyncQueue = (): void => {
+  for (const entry of dagSyncQueueByFileUri.values()) {
+    if (entry.timer) {
+      clearTimeout(entry.timer)
+      entry.timer = null
+    }
+    const waiters = entry.waiters.splice(0)
+    for (const resolve of waiters) {
+      resolve()
+    }
+  }
+  dagSyncQueueByFileUri.clear()
+}
+
+const getOrCreateDagSyncEntry = (fileUri: string): DagSyncQueueEntry => {
+  const existing = dagSyncQueueByFileUri.get(fileUri)
+  if (existing) {
+    return existing
+  }
+
+  const created: DagSyncQueueEntry = {
+    timer: null,
+    dueAt: null,
+    running: false,
+    queued: false,
+    pendingReason: 'diagnostics',
+    afterSyncTasks: [],
+    waiters: [],
+    lastCompletedAt: null
+  }
+  dagSyncQueueByFileUri.set(fileUri, created)
+  return created
+}
+
+type ScheduleDagSyncOptions = {
+  afterSync?: () => Promise<void>
+  debounceMsOverride?: number
+}
+
+const resolveDagSyncDelayMs = (
+  entry: DagSyncQueueEntry,
+  reason: DagSyncReason,
+  overrideMs?: number
+): number => {
+  let delay = overrideMs ?? DAG_SYNC_DEBOUNCE_BY_REASON[reason]
+  if (reason === 'diagnostics' && entry.lastCompletedAt !== null) {
+    const elapsed = Date.now() - entry.lastCompletedAt
+    if (elapsed < DAG_SYNC_MIN_INTERVAL_MS) {
+      delay = Math.max(delay, DAG_SYNC_MIN_INTERVAL_MS - elapsed)
+    }
+  }
+
+  return Math.max(0, delay)
+}
+
+const runScheduledDagSync = async (fileUri: string): Promise<void> => {
+  const entry = dagSyncQueueByFileUri.get(fileUri)
+  if (!entry) {
+    return
+  }
+
+  if (entry.running) {
+    entry.queued = true
+    dagSyncPerfStats.queuedWhileRunning += 1
+    return
+  }
+
+  entry.running = true
+  const waiters = entry.waiters.splice(0)
+  const afterSyncTasks = entry.afterSyncTasks.splice(0)
+  const reason = entry.pendingReason
+  const startedAt = Date.now()
+  await actSafely('dag_sync', { fileUri })
+  const durationMs = Date.now() - startedAt
+
+  dagSyncPerfStats.executed += 1
+  dagSyncPerfStats.totalDurationMs += durationMs
+  dagSyncPerfStats.lastDurationMs = durationMs
+  dagSyncPerfStats.maxDurationMs = Math.max(dagSyncPerfStats.maxDurationMs, durationMs)
+  dagSyncPerfStats.byReason[reason] += 1
+  entry.lastCompletedAt = Date.now()
+
+  for (const task of afterSyncTasks) {
+    try {
+      await task()
+    }
+    catch {
+      // best-effort post-sync hooks
+    }
+  }
+
+  for (const resolve of waiters) {
+    resolve()
+  }
+
+  entry.running = false
+  if (entry.queued || entry.waiters.length > 0 || entry.afterSyncTasks.length > 0) {
+    entry.queued = false
+    const delayMs = resolveDagSyncDelayMs(entry, 'diagnostics')
+    entry.dueAt = Date.now() + delayMs
+    entry.timer = setTimeout(() => {
+      entry.timer = null
+      entry.dueAt = null
+      void runScheduledDagSync(fileUri)
+    }, delayMs)
+  }
+}
+
+const scheduleDagSync = (
+  fileUri: string,
+  reason: DagSyncReason,
+  options: ScheduleDagSyncOptions = {}
+): Promise<void> => {
+  const entry = getOrCreateDagSyncEntry(fileUri)
+  if (options.afterSync) {
+    entry.afterSyncTasks.push(options.afterSync)
+  }
+
+  dagSyncPerfStats.scheduled += 1
+  const delayMs = resolveDagSyncDelayMs(entry, reason, options.debounceMsOverride)
+
+  let resolved = false
+  const waitPromise = new Promise<void>((resolve) => {
+    entry.waiters.push(() => {
+      if (!resolved) {
+        resolved = true
+        resolve()
+      }
+    })
+  })
+
+  if (entry.running) {
+    entry.pendingReason = reason
+    entry.queued = true
+    dagSyncPerfStats.queuedWhileRunning += 1
+    return waitPromise
+  }
+
+  const dueAt = Date.now() + delayMs
+  if (entry.timer && entry.dueAt !== null && entry.dueAt <= dueAt) {
+    entry.pendingReason = reason
+    dagSyncPerfStats.deduped += 1
+    return waitPromise
+  }
+
+  if (entry.timer) {
+    clearTimeout(entry.timer)
+    entry.timer = null
+    entry.dueAt = null
+  }
+
+  entry.pendingReason = reason
+  entry.dueAt = dueAt
+  entry.timer = setTimeout(() => {
+    entry.timer = null
+    entry.dueAt = null
+    void runScheduledDagSync(fileUri)
+  }, delayMs)
+
+  return waitPromise
+}
+
+const noteProjectionSelectDuration = (durationMs: number): void => {
+  projectionPerfStats.updates += 1
+  projectionPerfStats.totalSelectMs += durationMs
+  projectionPerfStats.lastSelectMs = durationMs
+  projectionPerfStats.maxSelectMs = Math.max(projectionPerfStats.maxSelectMs, durationMs)
+}
+
+const noteProjectionPanelDuration = (durationMs: number): void => {
+  projectionPerfStats.totalPanelMs += durationMs
+  projectionPerfStats.lastPanelMs = durationMs
+  projectionPerfStats.maxPanelMs = Math.max(projectionPerfStats.maxPanelMs, durationMs)
+}
+
+const toAverage = (total: number, count: number): number => (
+  count > 0 ? total / count : 0
+)
+
+const getPerformanceSnapshot = (): ExtensionPerformanceSnapshot => {
+  const pendingTimers = Array.from(dagSyncQueueByFileUri.values())
+    .filter((entry) => entry.timer !== null)
+    .length
+  const runningFiles = Array.from(dagSyncQueueByFileUri.values())
+    .filter((entry) => entry.running)
+    .length
+  const executed = Math.max(0, dagSyncPerfStats.executed)
+  const updates = Math.max(0, projectionPerfStats.updates)
+
+  return {
+    collectedAt: Date.now(),
+    dagSync: {
+      scheduled: dagSyncPerfStats.scheduled,
+      executed: dagSyncPerfStats.executed,
+      deduped: dagSyncPerfStats.deduped,
+      queuedWhileRunning: dagSyncPerfStats.queuedWhileRunning,
+      averageDurationMs: toAverage(dagSyncPerfStats.totalDurationMs, executed),
+      maxDurationMs: dagSyncPerfStats.maxDurationMs,
+      lastDurationMs: dagSyncPerfStats.lastDurationMs,
+      byReason: { ...dagSyncPerfStats.byReason }
+    },
+    projection: {
+      updates: projectionPerfStats.updates,
+      averageSelectMs: toAverage(projectionPerfStats.totalSelectMs, updates),
+      maxSelectMs: projectionPerfStats.maxSelectMs,
+      lastSelectMs: projectionPerfStats.lastSelectMs,
+      averagePanelMs: toAverage(projectionPerfStats.totalPanelMs, updates),
+      maxPanelMs: projectionPerfStats.maxPanelMs,
+      lastPanelMs: projectionPerfStats.lastPanelMs
+    },
+    queue: {
+      trackedFiles: dagSyncQueueByFileUri.size,
+      pendingTimers,
+      runningFiles
+    }
+  }
+}
+
+const reportPerformance = (): void => {
+  const snapshot = getPerformanceSnapshot()
+  const sync = snapshot.dagSync
+  const projection = snapshot.projection
+  const message = `[ProofFlow] Perf sync avg=${sync.averageDurationMs.toFixed(1)}ms`
+    + ` max=${sync.maxDurationMs.toFixed(1)}ms`
+    + ` scheduled/executed=${sync.scheduled}/${sync.executed}`
+    + ` deduped=${sync.deduped}`
+    + ` | projection avg(select/panel)=${projection.averageSelectMs.toFixed(1)}/${projection.averagePanelMs.toFixed(1)}ms`
+  void vscode.window.showInformationMessage(message)
+}
+
 const toAttemptResult = (status: StatusKind): AttemptResult => {
   switch (status) {
     case 'resolved': return 'success'
@@ -1839,6 +2178,14 @@ const appendRuntimeProbeFailure = (
   })
 }
 
+const hasStableNullishEmptyResponse = (stats: GoalSourceStats | undefined): boolean => (
+  stats?.probeFailures.some((failure) => (
+    failure.source === 'stable'
+    && failure.code === 'EMPTY_RESPONSE'
+    && /nullish/i.test(failure.message)
+  )) ?? false
+)
+
 const isLeanExtensionInstalled = (): boolean => {
   const extensionsApi = vscode.extensions as typeof vscode.extensions | undefined
   if (!extensionsApi || typeof extensionsApi.getExtension !== 'function') {
@@ -1893,7 +2240,13 @@ const waitForGoalReadiness = async (fileUri: string): Promise<GoalCoverageReadin
     )
     const elapsedMs = Date.now() - startedAt
     const fallbackOnlyHints = stableHintCount === 0 && fallbackHintCount > 0
+    const stableNullishObserved = hasStableNullishEmptyResponse(stats)
     const waitingForStableWindow = fallbackOnlyHints && elapsedMs < GOAL_FALLBACK_STABILIZE_MS
+    const waitingForStableNullishWindow = (
+      stableHintCount === 0
+      && stableNullishObserved
+      && elapsedMs < GOAL_STABLE_EMPTY_RESPONSE_STABILIZE_MS
+    )
     const stableProbeObserved = (
       typeof stats?.stableHints === 'number'
       || (stats?.probeFailures.some((failure) => failure.source === 'stable') ?? false)
@@ -1905,12 +2258,14 @@ const waitForGoalReadiness = async (fileUri: string): Promise<GoalCoverageReadin
     const allowFallbackOnlyReady = (
       fallbackOnlyHints
       && elapsedMs >= GOAL_FALLBACK_STABILIZE_MS
+      && (!stableNullishObserved || elapsedMs >= GOAL_STABLE_EMPTY_RESPONSE_STABILIZE_MS)
     )
     if (
       leanClientReady
       && stableProbeObserved
       && (!noConnectionFailure || allowFallbackOnlyReady)
       && !waitingForStableWindow
+      && !waitingForStableNullishWindow
     ) {
       transportReady = true
     }
@@ -2016,6 +2371,8 @@ const getGoalCoverageSnapshot = async (): Promise<GoalCoverageSnapshot | null> =
 
 export async function activate(context: vscode.ExtensionContext) {
   let readyApp: App
+  resetPerformanceStats()
+  clearDagSyncQueue()
 
   const resetPatterns = async (): Promise<void> => {
     attemptFingerprints.clear()
@@ -2061,7 +2418,7 @@ export async function activate(context: vscode.ExtensionContext) {
       errorMessage: node?.status.errorMessage ?? null
     })
 
-    await actSafely('dag_sync', { fileUri })
+    await scheduleDagSync(fileUri, 'apply')
     await actSafely('attempt_suggest', { fileUri, nodeId })
   }
 
@@ -2104,9 +2461,16 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   const unsubscribeProjection = readyApp.subscribe(
-    (state) => selectProjectionState(state),
+    (state) => {
+      const startedAt = Date.now()
+      const projection = selectProjectionState(state)
+      noteProjectionSelectDuration(Date.now() - startedAt)
+      return projection
+    },
     (projection) => {
+      const startedAt = Date.now()
       panelController?.setState(projection)
+      noteProjectionPanelDuration(Date.now() - startedAt)
     }
   )
   context.subscriptions.push(new vscode.Disposable(unsubscribeProjection))
@@ -2143,6 +2507,14 @@ export async function activate(context: vscode.ExtensionContext) {
     getGoalCoverageSnapshot()
   ))
 
+  const performanceReportCommand = vscode.commands.registerCommand('proof-flow.performanceReport', async () => {
+    reportPerformance()
+  })
+
+  const performanceSnapshotCommand = vscode.commands.registerCommand('proof-flow.performanceSnapshot', async () => (
+    getPerformanceSnapshot()
+  ))
+
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
     if (!editor || !isLeanDocument(editor.document)) {
       return
@@ -2150,7 +2522,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const fileUri = editor.document.uri.toString()
     await actSafely('file_activate', { fileUri })
-    await actSafely('dag_sync', { fileUri })
+    void scheduleDagSync(fileUri, 'activate')
   })
 
   const onDocumentSave = vscode.workspace.onDidSaveTextDocument(async (document) => {
@@ -2159,16 +2531,22 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 
     const fileUri = document.uri.toString()
-    await actSafely('dag_sync', { fileUri })
-    await maybeRecordAttempt(fileUri)
+    void scheduleDagSync(fileUri, 'save', {
+      afterSync: async () => {
+        await maybeRecordAttempt(fileUri)
+      }
+    })
   })
 
   const onDiagnosticsChange = vscode.languages.onDidChangeDiagnostics(async (event) => {
     const leanUris = event.uris.filter((uri) => isLeanUri(uri))
     for (const uri of leanUris) {
       const fileUri = uri.toString()
-      await actSafely('dag_sync', { fileUri })
-      await maybeRecordAttempt(fileUri)
+      void scheduleDagSync(fileUri, 'diagnostics', {
+        afterSync: async () => {
+          await maybeRecordAttempt(fileUri)
+        }
+      })
     }
   })
 
@@ -2201,6 +2579,8 @@ export async function activate(context: vscode.ExtensionContext) {
     suggestTacticsCommand,
     goalCoverageReportCommand,
     goalCoverageSnapshotCommand,
+    performanceReportCommand,
+    performanceSnapshotCommand,
     onEditorChange,
     onDocumentSave,
     onDiagnosticsChange,
@@ -2213,19 +2593,19 @@ export async function activate(context: vscode.ExtensionContext) {
     await actSafely('file_activate', {
       fileUri
     })
-    await actSafely('dag_sync', {
-      fileUri
-    })
+    await scheduleDagSync(fileUri, 'startup')
   }
 }
 
 export async function deactivate() {
+  clearDagSyncQueue()
   panelController?.dispose()
   panelController = null
 
   if (!app) {
     attemptFingerprints.clear()
     goalSourceStatsByFileUri.clear()
+    resetPerformanceStats()
     cachedGoalCommands = undefined
     cachedLeanExtensionApiMethods.clear()
     cachedLeanClientProvider = undefined
@@ -2237,6 +2617,7 @@ export async function deactivate() {
   app = null
   attemptFingerprints.clear()
   goalSourceStatsByFileUri.clear()
+  resetPerformanceStats()
   cachedGoalCommands = undefined
   cachedLeanExtensionApiMethods.clear()
   cachedLeanClientProvider = undefined

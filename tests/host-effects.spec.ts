@@ -394,6 +394,43 @@ describe('Host effects', () => {
     expect(history.files[fileUri].nodes.child.totalAttempts).toBe(1)
   })
 
+  it('attempt.record stores goal signature from active node goal', async () => {
+    const effect = createAttemptRecordEffect({
+      now: () => 1700000000007
+    })
+
+    const patches = await effect({
+      fileUri,
+      nodeId: 'child',
+      tactic: 'simp',
+      tacticKey: 'simp',
+      result: 'error',
+      contextErrorCategory: 'TACTIC_FAILED',
+      errorMessage: 'simp failed',
+      durationMs: 8
+    }, {
+      snapshot: {
+        data: {
+          files: {
+            [fileUri]: {
+              dag: {
+                nodes: {
+                  child: {
+                    goal: '⊢ n + 0 = n'
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const patternsPatch = patches.find((patch) => patch.op === 'set' && patch.path === 'patterns')
+    const patterns = (patternsPatch as { value: any }).value
+    expect(patterns.entries['TACTIC_FAILED:simp'].goalSignature).toBe('n + 0 = n')
+  })
+
   it('attempt.record appends attempts and resets streak on success', async () => {
     const effect = createAttemptRecordEffect({
       now: () => 1700000000010
@@ -839,6 +876,83 @@ describe('Host effects', () => {
     const suggestions = (patches[0] as { value: any }).value
     const child = suggestions.byNode.child as Array<{ tacticKey: string }>
     expect(child.map((entry) => entry.tacticKey)).toEqual(['simp', 'exact'])
+  })
+
+  it('attempt.suggest boosts goal-signature matched tactic when score gap is small', async () => {
+    const effect = createAttemptSuggestEffect({
+      now: () => 1700000000300,
+      minSampleSize: 3,
+      limit: 2
+    })
+
+    const basePatterns = {
+      entries: {
+        'TACTIC_FAILED:exact': {
+          errorCategory: 'TACTIC_FAILED',
+          tacticKey: 'exact',
+          successCount: 8,
+          failureCount: 2,
+          score: 0.8,
+          lastUpdated: 1700000000200,
+          goalSignature: 'a + 0 = a'
+        },
+        'TACTIC_FAILED:simp': {
+          errorCategory: 'TACTIC_FAILED',
+          tacticKey: 'simp',
+          successCount: 7,
+          failureCount: 3,
+          score: 0.7,
+          lastUpdated: 1700000000200,
+          goalSignature: 'n + 0 = n'
+        }
+      }
+    }
+
+    const makeSnapshot = (goal: string | null) => ({
+      files: {
+        [fileUri]: {
+          dag: {
+            nodes: {
+              child: {
+                goal,
+                status: {
+                  errorCategory: 'TACTIC_FAILED'
+                }
+              }
+            }
+          }
+        }
+      },
+      history: { files: {} },
+      patterns: basePatterns,
+      suggestions: {
+        version: '0.4.0',
+        byNode: {},
+        updatedAt: null
+      }
+    })
+
+    const g0Patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: makeSnapshot(null)
+      }
+    })
+    const g1Patches = await effect({
+      fileUri,
+      nodeId: 'child'
+    }, {
+      snapshot: {
+        data: makeSnapshot('⊢ n + 0 = n')
+      }
+    })
+
+    const g0Suggestions = (g0Patches[0] as { value: any }).value.byNode.child as Array<{ tacticKey: string }>
+    const g1Suggestions = (g1Patches[0] as { value: any }).value.byNode.child as Array<{ tacticKey: string }>
+    expect(g0Suggestions.map((entry) => entry.tacticKey)).toEqual(['exact', 'simp'])
+    expect(g1Suggestions.map((entry) => entry.tacticKey)).toEqual(['simp', 'exact'])
   })
 
   it('attempt.suggest prefers fresher patterns when other factors tie', async () => {

@@ -278,6 +278,12 @@ const env = vi.hoisted(() => {
     }
   }
 
+  const wait = async (ms: number) => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms)
+    })
+  }
+
   class ProjectionPanelController {
     private open = false
     readonly setState = vi.fn()
@@ -319,6 +325,7 @@ const env = vi.hoisted(() => {
     fireSave: (event: unknown) => fire(listeners.save, event),
     fireSelection: (event: unknown) => fire(listeners.selection, event),
     fireDiagnostics: (event: unknown) => fire(listeners.diagnostics, event),
+    wait,
     getActCalls: () => [...actCalls],
     getCommand: (id: string) => commands.get(id),
     getPanel: () => panelInstances[0],
@@ -405,11 +412,13 @@ describe('Extension E2E flow', () => {
       uri: env.leanUri
     })
 
+    await env.wait(500)
+
     const calls = env.getActCalls()
     const types = calls.map((call) => call.type)
 
     expect(types.filter((type) => type === 'file_activate').length).toBeGreaterThanOrEqual(2)
-    expect(types.filter((type) => type === 'dag_sync').length).toBeGreaterThanOrEqual(4)
+    expect(types.filter((type) => type === 'dag_sync').length).toBeGreaterThanOrEqual(2)
     expect(types).toContain('cursor_sync')
     expect(types).toContain('attempt_record')
 
@@ -573,6 +582,44 @@ describe('Extension E2E flow', () => {
     )
     expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('stableRatio=')
+    )
+
+    await extension.deactivate()
+  })
+
+  it('reports performance snapshot and report command', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+
+    await extension.activate(context as any)
+
+    await env.fireDiagnostics({
+      uris: [env.leanUri, env.leanUri]
+    })
+    await env.wait(350)
+
+    const snapshotCommand = env.getCommand('proof-flow.performanceSnapshot')
+    expect(snapshotCommand).toBeTypeOf('function')
+
+    const snapshot = await snapshotCommand?.() as {
+      dagSync?: {
+        scheduled?: number
+        executed?: number
+      }
+      projection?: {
+        updates?: number
+      }
+    } | undefined
+    expect(snapshot?.dagSync?.scheduled).toBeGreaterThan(0)
+    expect(snapshot?.dagSync?.executed).toBeGreaterThan(0)
+    expect(snapshot?.projection?.updates).toBeGreaterThan(0)
+
+    const reportCommand = env.getCommand('proof-flow.performanceReport')
+    expect(reportCommand).toBeTypeOf('function')
+    await reportCommand?.()
+
+    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Perf sync avg=')
     )
 
     await extension.deactivate()

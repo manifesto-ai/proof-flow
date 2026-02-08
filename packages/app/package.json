@@ -14,7 +14,9 @@
     "onCommand:proof-flow.patternsReset",
     "onCommand:proof-flow.suggestTactics",
     "onCommand:proof-flow.goalCoverageReport",
-    "onCommand:proof-flow.goalCoverageSnapshot"
+    "onCommand:proof-flow.goalCoverageSnapshot",
+    "onCommand:proof-flow.performanceReport",
+    "onCommand:proof-flow.performanceSnapshot"
   ],
   "contributes": {
     "configuration": {
@@ -47,6 +49,14 @@
       {
         "command": "proof-flow.goalCoverageSnapshot",
         "title": "ProofFlow: Goal Coverage Snapshot (Debug)"
+      },
+      {
+        "command": "proof-flow.performanceReport",
+        "title": "ProofFlow: Performance Report"
+      },
+      {
+        "command": "proof-flow.performanceSnapshot",
+        "title": "ProofFlow: Performance Snapshot (Debug)"
       }
     ]
   },

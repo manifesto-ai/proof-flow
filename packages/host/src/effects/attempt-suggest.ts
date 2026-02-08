@@ -7,6 +7,7 @@ import {
   type EffectPatch,
   type HostEffectHandler
 } from './types.js'
+import { toGoalSignature } from './goal-signature.js'
 
 export type AttemptSuggestInput = {
   fileUri: string
@@ -29,6 +30,8 @@ type SuggestionCandidate = {
   sampleSize: number
   score: number
   lastUpdated: number | null
+  goalSignature: string | null
+  goalMatched: boolean
   nodeLocalSampleSize: number
   nodeLocalSuccessRate: number
   rankingScore: number
@@ -311,6 +314,7 @@ const computeRankingScore = (
     score: number
     sampleSize: number
     lastUpdated: number | null
+    goalMatched: boolean
     nodeLocalSampleSize: number
     nodeLocalSuccessRate: number
   },
@@ -333,6 +337,7 @@ const computeRankingScore = (
     + (sampleConfidence * 0.15)
     + (recencyScore * 0.1)
     + (nodeLocalConfidence * 0.1)
+    + (input.goalMatched ? 0.08 : 0)
   )
 }
 
@@ -340,6 +345,7 @@ const toPatternCandidates = (
   snapshotData: Record<string, unknown>,
   nodeLocalIndex: Map<string, NodeLocalAggregate>,
   activeCategory: ErrorCategory | null,
+  activeGoalSignature: string | null,
   generatedAt: number
 ): SuggestionCandidate[] => {
   const patterns = asPatternsState(snapshotData)
@@ -362,6 +368,12 @@ const toPatternCandidates = (
       const sampleSize = successCount + failureCount
       const score = asNumber(entry.score, sampleSize > 0 ? successCount / sampleSize : 0)
       const lastUpdated = asNullableNumber(entry.lastUpdated)
+      const goalSignature = toGoalSignature(entry.goalSignature)
+      const goalMatched = (
+        activeGoalSignature !== null
+        && goalSignature !== null
+        && activeGoalSignature === goalSignature
+      )
       const local = nodeLocalIndex.get(`${patternCategory}:${tacticKey}`)
       const nodeLocalSampleSize = local?.sampleSize ?? 0
       const nodeLocalSuccessRate = local?.successRate ?? 0
@@ -370,6 +382,7 @@ const toPatternCandidates = (
         score,
         sampleSize,
         lastUpdated,
+        goalMatched,
         nodeLocalSampleSize,
         nodeLocalSuccessRate
       }, activeCategory, generatedAt)
@@ -382,6 +395,8 @@ const toPatternCandidates = (
         sampleSize,
         score,
         lastUpdated,
+        goalSignature,
+        goalMatched,
         nodeLocalSampleSize,
         nodeLocalSuccessRate,
         rankingScore
@@ -402,6 +417,7 @@ const toHistoryCandidates = (
       score,
       sampleSize: entry.sampleSize,
       lastUpdated: entry.lastAttemptAt,
+      goalMatched: false,
       nodeLocalSampleSize: entry.sampleSize,
       nodeLocalSuccessRate: entry.successRate
     }, sourceCategory, generatedAt)
@@ -414,6 +430,8 @@ const toHistoryCandidates = (
       sampleSize: entry.sampleSize,
       score,
       lastUpdated: entry.lastAttemptAt,
+      goalSignature: null,
+      goalMatched: false,
       nodeLocalSampleSize: entry.sampleSize,
       nodeLocalSuccessRate: entry.successRate,
       rankingScore
@@ -463,6 +481,18 @@ const resolveSourceCategory = (
   }
 
   return latestCategory
+}
+
+const resolveNodeGoalSignature = (
+  snapshotData: Record<string, unknown>,
+  input: AttemptSuggestInput
+): string | null => {
+  const files = asRecord(snapshotData.files)
+  const file = asRecord(files?.[input.fileUri])
+  const dag = asRecord(file?.dag)
+  const nodes = asRecord(dag?.nodes)
+  const node = asRecord(nodes?.[input.nodeId])
+  return toGoalSignature(node?.goal)
 }
 
 const toSuggestionEntries = (
@@ -534,12 +564,14 @@ export const createAttemptSuggestEffect = (
   const ttlMs = options.ttlMs ?? DEFAULT_SUGGESTION_TTL_MS
   const maxTrackedNodes = options.maxTrackedNodes ?? DEFAULT_MAX_TRACKED_NODES
   const sourceCategory = resolveSourceCategory(snapshotData, input)
+  const goalSignature = resolveNodeGoalSignature(snapshotData, input)
   const nodeLocalAggregates = toNodeLocalAggregates(snapshotData, input)
   const nodeLocalIndex = toNodeLocalIndex(nodeLocalAggregates)
   const patternCandidates = toPatternCandidates(
     snapshotData,
     nodeLocalIndex,
     sourceCategory,
+    goalSignature,
     generatedAt
   )
   const existingKeys = new Set(patternCandidates.map((entry) => `${entry.sourceCategory}:${entry.tacticKey}`))

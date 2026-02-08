@@ -1,16 +1,16 @@
 {
-  "measuredAt": "2026-02-08T05:24:09.750Z",
+  "measuredAt": "2026-02-08T06:00:31.358Z",
   "workspace": "/Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity",
-  "totalNodes": 4,
+  "totalNodes": 3,
   "withGoal": 3,
-  "ratio": 0.75,
-  "percent": "75.0",
+  "ratio": 1,
+  "percent": "100.0",
   "sourceKpi": {
-    "totalHints": 12,
-    "stableHints": 9,
+    "totalHints": 7,
+    "stableHints": 4,
     "fallbackHints": 3,
-    "stableHintRatio": 0.75,
-    "fallbackHintRatio": 0.25,
+    "stableHintRatio": 0.5714285714285714,
+    "fallbackHintRatio": 0.42857142857142855,
     "fallbackDominantSamples": [],
     "alerts": [
       "STABLE_HINTS_ZERO"
@@ -25,88 +25,130 @@
       "ratio": 1,
       "percent": "100.0",
       "sources": {
-        "stableHints": 5,
+        "stableHints": 0,
         "declarationHints": 2,
         "diagnosticHints": 0,
         "hoverHints": 0,
         "apiHints": 0,
         "commandHints": 0,
-        "stableMethodsUsed": [
-          "$/lean/plainGoal"
-        ],
+        "stableMethodsUsed": [],
         "apiMethodsUsed": [],
         "commandsUsed": [],
         "probeFailures": [
           {
             "source": "stable",
             "method": "$/lean/plainGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=4)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "stable",
+            "method": "$/lean/plainGoal",
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "stable",
+            "method": "$/lean/plainGoal",
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "stable",
+            "method": "$/lean/plainGoal",
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "stable",
+            "method": "$/lean/plainGoal",
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "stable",
+            "method": "$/lean/plainGoal",
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
+          },
+          {
+            "source": "api",
+            "method": "leanprover.lean4 exports",
+            "code": "API_METHODS_UNAVAILABLE",
+            "message": "No Lean extension API goal methods were discovered."
+          },
+          {
+            "source": "command",
+            "method": "discoverLeanGoalCommands",
+            "code": "COMMANDS_UNAVAILABLE",
+            "message": "No Lean goal commands were discovered from the command registry."
           }
         ],
         "leanClientReady": true
       },
       "sourceKpi": {
-        "totalHints": 7,
-        "stableHints": 5,
+        "totalHints": 2,
+        "stableHints": 0,
         "fallbackHints": 2,
-        "stableRatio": 0.7142857142857143,
-        "fallbackRatio": 0.2857142857142857,
+        "stableRatio": 0,
+        "fallbackRatio": 1,
         "declarationFallbackRatio": 1,
         "fallbackDominant": false,
-        "alerts": []
+        "alerts": [
+          "STABLE_HINTS_ZERO"
+        ]
       },
       "readiness": {
         "status": "ready",
-        "waitedMs": 3123,
+        "waitedMs": 20440,
         "leanClientReady": true,
         "dagSynced": true,
-        "lastSyncedAt": 1770528233890
+        "lastSyncedAt": 1770530372544
       }
     },
     {
       "sample": "GoalFidelitySamples/MathlibSample.lean",
       "fileUri": "file:///Users/eggp/dev/workspace/eggp/manifesto-ai/workspaces/proof-flow/samples/goal-fidelity/GoalFidelitySamples/MathlibSample.lean",
-      "totalNodes": 2,
+      "totalNodes": 1,
       "withGoal": 1,
-      "ratio": 0.5,
-      "percent": "50.0",
+      "ratio": 1,
+      "percent": "100.0",
       "sources": {
         "stableHints": 0,
         "declarationHints": 1,
@@ -121,38 +163,38 @@
           {
             "source": "stable",
             "method": "$/lean/plainGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainGoal",
-            "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "code": "UNKNOWN",
+            "message": "No connection to Lean (attempts=4)"
           },
           {
             "source": "stable",
             "method": "$/lean/plainTermGoal",
             "code": "EMPTY_RESPONSE",
-            "message": "nullish (attempts=1)"
+            "message": "nullish (attempts=3)"
           },
           {
             "source": "stable",
@@ -219,10 +261,10 @@
       },
       "readiness": {
         "status": "ready",
-        "waitedMs": 3677,
+        "waitedMs": 29230,
         "leanClientReady": true,
         "dagSynced": true,
-        "lastSyncedAt": 1770528245211
+        "lastSyncedAt": 1770530413461
       }
     },
     {
@@ -285,10 +327,10 @@
       },
       "readiness": {
         "status": "ready",
-        "waitedMs": 6,
+        "waitedMs": 21,
         "leanClientReady": true,
         "dagSynced": true,
-        "lastSyncedAt": 1770528249745
+        "lastSyncedAt": 1770530431338
       }
     }
   ]

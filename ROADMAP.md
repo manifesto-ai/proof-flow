@@ -38,16 +38,19 @@
 - ✅ v0.5 scoring v1 (category/sample/recency/node-local ranking)
 - ✅ v0.5 explainability v1 (projection reason string + panel 노출)
 - ✅ `G0` baseline 지표/러너/리포트 추가 (`reports/g0-baseline-report.json`)
+- ✅ `G1` 실측 러너/리포트 추가 (`reports/g1-delta-report.json`, stable source on/off A/B)
 - ✅ attempt 데이터 품질 계측 + 저품질 `tacticKey` 패턴 반영 필터(History 유지, Pattern 제외)
 - ✅ suggestion TTL/상한 정책 + replay 복원 무결성 테스트 추가
-- ⚠️ Goal coverage `75.0%`, stable hint ratio `75.0%`이며 Mathlib 샘플은 stable 응답이 `nullish`로 돌아와 stable hint `0` 케이스가 남음
+- ✅ Mathlib stable-source `nullish` 재현/분류 및 완화안 반영(샘플별 snapshot race 제거 + nullish 안정화 대기 윈도우)
+- ✅ v0.6 sync 최적화 1차: 파일 단위 `dag_sync` debounce/중복 제거 큐 도입
+- ✅ v0.6 성능 계측 1차: `performanceSnapshot`/`performanceReport` 커맨드 + E2E 검증
+- ✅ CI suggest-loop 통합 게이트 추가 (`pnpm test:ci:suggest-loop`)
+- ⚠️ 최신 spike에서 coverage `100.0%`로 개선됐지만 Mathlib 샘플은 stable hint `0` 케이스가 지속됨(현재 declaration fallback로 보완)
 - ✅ stable-first + fallback 구조에서 fallback-only 루프도 동작 가능함을 확인 (블로커 아님)
 
 ## Priority Queue
-1. P1-C: `G1` 실측 러너/리포트(stable source on/off A/B) 추가
-2. P1-D: Mathlib 샘플 stable source `nullish` 원인 분석(ready 타이밍/요청 경로/응답 파싱)
-3. P2: v0.6 Performance/CI Hardening
-4. Monitor: Goal-fidelity 품질(특히 Mathlib 샘플 stable hint `0` 재발 여부)
+1. Monitor: Goal-fidelity 품질(특히 Mathlib 샘플 stable hint `0` 재발 여부)
+2. Monitor: Manifesto core 연동 리스크(`core#108`, `core#109`)
 
 ## Checkpoints
 
@@ -156,11 +159,11 @@
 - [x] attempt 데이터 품질 계측: tacticKey 추출 정확도/누락률 수집 + 저품질 입력 필터링 기준
 - [x] suggestion TTL/상한 정책 추가(노드당 개수 제한, stale 정리)
 - [x] world replay 무결성 테스트(정리 정책 적용 후 복원 일관성)
-- [ ] `G1` 실측 러너/리포트 추가: stable source on/off 조건에서 `G0` 대비 lift 계산
-- [ ] Mathlib sample 안정화: stable source `nullish` 재현/원인 분류/완화안 검증
+- [x] `G1` 실측 러너/리포트 추가: stable source on/off 조건에서 `G0` 대비 lift 계산
+- [x] Mathlib sample 안정화: stable source `nullish` 재현/원인 분류/완화안 검증
 
 ### 14. v0.6 Performance / CI Hardening (P2)
-- [ ] 대형 증명 파일에서 incremental sync/debounce 최적화
-- [ ] 성능 회귀 측정 지표(동기화 지연, projection 렌더 시간) 추가
-- [ ] CI에 통합 시나리오 최소 1개 추가(suggest loop)
+- [x] 대형 증명 파일에서 incremental sync/debounce 최적화
+- [x] 성능 회귀 측정 지표(동기화 지연, projection 렌더 시간) 추가
+- [x] CI에 통합 시나리오 최소 1개 추가(suggest loop)
 - [ ] Manifesto core 연동 리스크 모니터링(`core#108`, `core#109`) 및 에스컬레이션 기준 유지

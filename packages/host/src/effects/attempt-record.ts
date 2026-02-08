@@ -9,6 +9,7 @@ import {
   type EffectPatch,
   type HostEffectHandler
 } from './types.js'
+import { toGoalSignature } from './goal-signature.js'
 
 export type AttemptRecordInput = {
   fileUri: string
@@ -280,6 +281,7 @@ const toPatternsPatchValue = (
   const errorCategory = input.contextErrorCategory ?? 'OTHER'
   const key = `${errorCategory}:${input.tacticKey}`
   const previousEntry = asRecord(previousPatterns.entries[key])
+  const currentGoalSignature = resolveNodeGoalSignature(snapshotData, input.fileUri, input.nodeId)
   const previousSuccessCount = asNumber(previousEntry?.successCount)
   const previousFailureCount = asNumber(previousEntry?.failureCount)
   const nextSuccessCount = previousSuccessCount + (input.result === 'success' ? 1 : 0)
@@ -297,7 +299,7 @@ const toPatternsPatchValue = (
     lastUpdated: timestamp,
     dagFingerprint: asNullableString(previousEntry?.dagFingerprint),
     dagClusterId: asNullableString(previousEntry?.dagClusterId),
-    goalSignature: asNullableString(previousEntry?.goalSignature)
+    goalSignature: currentGoalSignature ?? asNullableString(previousEntry?.goalSignature)
   }
 
   return {
@@ -309,6 +311,19 @@ const toPatternsPatchValue = (
     totalAttempts: previousPatterns.totalAttempts + 1,
     updatedAt: timestamp
   }
+}
+
+const resolveNodeGoalSignature = (
+  snapshotData: Record<string, unknown>,
+  fileUri: string,
+  nodeId: string
+): string | null => {
+  const files = asRecord(snapshotData.files)
+  const file = asRecord(files?.[fileUri])
+  const dag = asRecord(file?.dag)
+  const nodes = asRecord(dag?.nodes)
+  const node = asRecord(nodes?.[nodeId])
+  return toGoalSignature(node?.goal)
 }
 
 export const createAttemptRecordEffect = (

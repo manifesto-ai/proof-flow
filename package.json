@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:ci:suggest-loop": "vitest run tests/suggestion-closed-loop.spec.ts tests/g1-delta.spec.ts",
     "test:smoke:vscode": "node scripts/vscode-smoke.mjs",
     "test:spike:goal-fidelity": "node scripts/vscode-goal-fidelity.mjs"
   },

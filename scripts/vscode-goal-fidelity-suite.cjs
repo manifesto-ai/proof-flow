@@ -56,7 +56,30 @@ const normalizeSnapshot = (snapshot, fileUri) => {
   }
 }
 
-async function waitForCoverageSnapshot(timeoutMs) {
+function isFallbackOnlySnapshot(snapshot) {
+  const stableHints = Number(snapshot?.sources?.stableHints || 0)
+  const fallbackHints = (
+    Number(snapshot?.sources?.declarationHints || 0)
+    + Number(snapshot?.sources?.diagnosticHints || 0)
+    + Number(snapshot?.sources?.hoverHints || 0)
+    + Number(snapshot?.sources?.apiHints || 0)
+    + Number(snapshot?.sources?.commandHints || 0)
+  )
+  return stableHints === 0 && fallbackHints > 0
+}
+
+function hasStableNullishFailure(snapshot) {
+  const failures = Array.isArray(snapshot?.sources?.probeFailures)
+    ? snapshot.sources.probeFailures
+    : []
+  return failures.some((failure) => (
+    failure?.source === 'stable'
+    && failure?.code === 'EMPTY_RESPONSE'
+    && /nullish/i.test(String(failure?.message || ''))
+  ))
+}
+
+async function waitForCoverageSnapshot(expectedFileUri, timeoutMs) {
   const startedAt = Date.now()
   let latest = null
 
@@ -64,14 +87,29 @@ async function waitForCoverageSnapshot(timeoutMs) {
     latest = await vscode.commands.executeCommand('proof-flow.goalCoverageSnapshot')
     const normalized = normalizeSnapshot(latest, '')
 
-    if (normalized.totalNodes > 0 && normalized.readiness.status !== 'warming') {
+    const sameFile = normalized.fileUri === expectedFileUri
+    if (!sameFile) {
+      await wait(500)
+      continue
+    }
+
+    const needsStableSettle = (
+      isFallbackOnlySnapshot(normalized)
+      && hasStableNullishFailure(normalized)
+      && normalized.readiness.waitedMs < 6000
+    )
+    if (
+      normalized.totalNodes > 0
+      && normalized.readiness.status !== 'warming'
+      && !needsStableSettle
+    ) {
       return normalized
     }
 
     await wait(500)
   }
 
-  return normalizeSnapshot(latest, '')
+  return normalizeSnapshot(latest, expectedFileUri)
 }
 
 async function run() {
@@ -92,7 +130,7 @@ async function run() {
     await document.save()
     await wait(3000)
 
-    const snapshot = await waitForCoverageSnapshot(30000)
+    const snapshot = await waitForCoverageSnapshot(uri.toString(), 30000)
     results.push({
       sample: relativePath,
       ...normalizeSnapshot(snapshot, uri.toString())
