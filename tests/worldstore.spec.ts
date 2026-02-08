@@ -78,4 +78,78 @@ describe('ProofFlow custom world store', () => {
     expect(await storeB.has(world2Id)).toBe(true)
     expect(await storeB.getLineage(world2Id)).toEqual([world2Id, genesisId])
   })
+
+  it('applies delta paths containing dotted file URIs without key corruption', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'proof-flow-worldstore-'))
+    tempDirs.push(rootPath)
+
+    const storeA = await createProofFlowWorldStore({ rootPath })
+
+    const fileUri = 'file:///tmp/proof.lean'
+    const genesisId = 'w_genesis_uri' as any
+    const nextId = 'w_next_uri' as any
+
+    await storeA.initializeGenesis?.({
+      worldId: genesisId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-1',
+      createdAt: 123,
+      createdBy: null
+    } as any, {
+      data: {
+        files: {
+          [fileUri]: {
+            fileUri,
+            dag: null,
+            lastSyncedAt: 1
+          }
+        },
+        ui: {
+          panelVisible: true
+        }
+      },
+      computed: {},
+      system: {
+        status: 'idle',
+        lastError: null,
+        errors: [],
+        pendingRequirements: [],
+        currentAction: null
+      },
+      meta: {
+        version: 1,
+        timestamp: 123,
+        randomSeed: 'seed',
+        schemaHash: 'schema-hash'
+      }
+    } as any)
+
+    await storeA.store({
+      worldId: nextId,
+      schemaHash: 'schema-hash',
+      snapshotHash: 'snapshot-hash-2',
+      createdAt: 124,
+      createdBy: 'p_1' as any
+    } as any, {
+      fromWorld: genesisId,
+      toWorld: nextId,
+      patches: [
+        {
+          op: 'set',
+          path: `data.files.${fileUri}.lastSyncedAt`,
+          value: 2
+        }
+      ],
+      createdAt: 124
+    } as any)
+
+    await delay(25)
+
+    const restored = await storeA.restore(nextId)
+    const files = (restored.data as any).files
+
+    expect(files[fileUri]).toBeDefined()
+    expect(files[fileUri].lastSyncedAt).toBe(2)
+    expect(Object.keys(files)).toEqual([fileUri])
+  })
 })

@@ -8,7 +8,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:smoke:vscode": "node scripts/vscode-smoke.mjs"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^7.2.0",
@@ -17,6 +18,7 @@
     "@manifesto-ai/core": "^2.2.0",
     "@manifesto-ai/host": "^2.2.0",
     "@manifesto-ai/world": "^2.2.0",
+    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18"

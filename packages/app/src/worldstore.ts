@@ -1,6 +1,13 @@
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { createInMemoryWorldStore, type AppConfig, type Snapshot, type World, type WorldDelta, type WorldId, type WorldStore } from '@manifesto-ai/app'
+import {
+  type AppConfig,
+  type Snapshot,
+  type World,
+  type WorldDelta,
+  type WorldId,
+  type WorldStore
+} from '@manifesto-ai/app'
 
 const DEFAULT_STORE_PATH = '.proof-flow/world-store.json'
 
@@ -17,6 +24,204 @@ export type ProofFlowWorldOptions = {
 const resolveStorePath = (options: ProofFlowWorldOptions): string => (
   options.storePath ?? join(options.rootPath, DEFAULT_STORE_PATH)
 )
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  value !== null
+  && typeof value === 'object'
+  && !Array.isArray(value)
+)
+
+const stripPlatformNamespaces = (data: unknown): unknown => {
+  if (!isRecord(data)) {
+    return data
+  }
+
+  const cleanData: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (!key.startsWith('$')) {
+      cleanData[key] = value
+    }
+  }
+  return cleanData
+}
+
+const sanitizeSnapshot = (snapshot: Snapshot): Snapshot => {
+  const data = stripPlatformNamespaces(snapshot.data)
+  if (data === snapshot.data) {
+    return snapshot
+  }
+
+  return {
+    ...snapshot,
+    data
+  }
+}
+
+const splitPatchPath = (path: string): { root: 'data' | 'system' | 'input' | 'computed' | 'meta'; subPath: string } => {
+  if (path === 'data' || path.startsWith('data.')) {
+    return { root: 'data', subPath: path === 'data' ? '' : path.slice(5) }
+  }
+  if (path === 'system' || path.startsWith('system.')) {
+    return { root: 'system', subPath: path === 'system' ? '' : path.slice(7) }
+  }
+  if (path === 'input' || path.startsWith('input.')) {
+    return { root: 'input', subPath: path === 'input' ? '' : path.slice(6) }
+  }
+  if (path === 'computed' || path.startsWith('computed.')) {
+    return { root: 'computed', subPath: path === 'computed' ? '' : path.slice(9) }
+  }
+  if (path === 'meta' || path.startsWith('meta.')) {
+    return { root: 'meta', subPath: path === 'meta' ? '' : path.slice(5) }
+  }
+  return { root: 'data', subPath: path }
+}
+
+const splitSegments = (path: string): string[] => (
+  path.split('.').filter((segment) => segment.length > 0)
+)
+
+const resolveFilesPath = (
+  snapshot: Snapshot,
+  rawSubPath: string
+): string[] => {
+  if (rawSubPath === 'files') {
+    return ['data', 'files']
+  }
+
+  if (!rawSubPath.startsWith('files.')) {
+    return ['data', ...splitSegments(rawSubPath)]
+  }
+
+  const rest = rawSubPath.slice('files.'.length)
+  if (rest.length === 0) {
+    return ['data', 'files']
+  }
+
+  const data = isRecord(snapshot.data) ? snapshot.data : null
+  const files = data && isRecord(data.files) ? data.files : null
+
+  if (files) {
+    const candidates = Object.keys(files).sort((a, b) => b.length - a.length)
+    const key = candidates.find((candidate) => (
+      rest === candidate || rest.startsWith(`${candidate}.`)
+    ))
+
+    if (key) {
+      const suffix = rest.slice(key.length)
+      const suffixSegments = suffix.startsWith('.')
+        ? splitSegments(suffix.slice(1))
+        : []
+      return ['data', 'files', key, ...suffixSegments]
+    }
+  }
+
+  // Fall back to treating the remainder as a single key for first-write cases.
+  return ['data', 'files', rest]
+}
+
+const resolvePatchSegments = (snapshot: Snapshot, path: string): string[] => {
+  const { root, subPath } = splitPatchPath(path)
+
+  if (root === 'data') {
+    if (!subPath) {
+      return ['data']
+    }
+    return resolveFilesPath(snapshot, subPath)
+  }
+
+  if (!subPath) {
+    return [root]
+  }
+
+  return [root, ...splitSegments(subPath)]
+}
+
+const getParentContainer = (
+  target: Record<string, unknown>,
+  segments: string[],
+  create: boolean
+): Record<string, unknown> | null => {
+  if (segments.length === 0) {
+    return null
+  }
+
+  let current: Record<string, unknown> = target
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const key = segments[i]
+    const next = current[key]
+
+    if (isRecord(next)) {
+      current = next
+      continue
+    }
+
+    if (!create) {
+      return null
+    }
+
+    const created: Record<string, unknown> = {}
+    current[key] = created
+    current = created
+  }
+
+  return current
+}
+
+const applyPatchToSnapshot = (
+  snapshot: Snapshot,
+  patch: { op: 'set' | 'unset' | 'merge'; path: string; value?: unknown }
+): Snapshot => {
+  const next = structuredClone(snapshot) as Record<string, unknown>
+  const nextSnapshot = next as Snapshot
+  const segments = resolvePatchSegments(nextSnapshot, patch.path)
+
+  if (segments.length === 0) {
+    return nextSnapshot
+  }
+
+  if (patch.op === 'unset') {
+    const parent = getParentContainer(next, segments, false)
+    if (parent) {
+      delete parent[segments[segments.length - 1]]
+    }
+    return nextSnapshot
+  }
+
+  const parent = getParentContainer(next, segments, true)
+  if (!parent) {
+    return nextSnapshot
+  }
+
+  const key = segments[segments.length - 1]
+  if (patch.op === 'set') {
+    parent[key] = patch.value
+    return nextSnapshot
+  }
+
+  const existing = parent[key]
+  parent[key] = {
+    ...(isRecord(existing) ? existing : {}),
+    ...(isRecord(patch.value) ? patch.value : {})
+  }
+
+  return nextSnapshot
+}
+
+const applyDeltaToSnapshot = (
+  base: Snapshot,
+  patches: WorldDelta['patches']
+): Snapshot => {
+  let snapshot = structuredClone(base) as Snapshot
+  for (const patch of patches) {
+    snapshot = applyPatchToSnapshot(snapshot, patch)
+  }
+  return sanitizeSnapshot(snapshot)
+}
+
+type StoredWorld = {
+  world: World
+  delta: WorldDelta
+}
 
 const fileExists = async (path: string): Promise<boolean> => {
   try {
@@ -56,7 +261,9 @@ const persistPayload = async (payload: PersistedStorePayload, path: string): Pro
 }
 
 class FileBackedWorldStore implements WorldStore {
-  private readonly inner = createInMemoryWorldStore()
+  private readonly worlds = new Map<WorldId, StoredWorld>()
+  private readonly snapshots = new Map<WorldId, Snapshot>()
+  private readonly children = new Map<WorldId, Set<WorldId>>()
   private readonly payload: PersistedStorePayload
   private readonly storePath: string
   private writing: Promise<void> = Promise.resolve()
@@ -74,12 +281,52 @@ class FileBackedWorldStore implements WorldStore {
   }
 
   private async replay(): Promise<void> {
-    if (this.payload.genesis) {
-      await this.inner.initializeGenesis(this.payload.genesis.world, this.payload.genesis.snapshot)
+    this.worlds.clear()
+    this.snapshots.clear()
+    this.children.clear()
+
+    const genesis = this.payload.genesis
+    if (!genesis) {
+      return
     }
 
+    const genesisDelta: WorldDelta = {
+      fromWorld: genesis.world.worldId,
+      toWorld: genesis.world.worldId,
+      patches: [],
+      createdAt: genesis.world.createdAt
+    }
+
+    this.worlds.set(genesis.world.worldId, {
+      world: genesis.world,
+      delta: genesisDelta
+    })
+    this.snapshots.set(genesis.world.worldId, sanitizeSnapshot(genesis.snapshot))
+    this.children.set(genesis.world.worldId, new Set())
+
     for (const entry of this.payload.entries) {
-      await this.inner.store(entry.world, entry.delta)
+      const parentSnapshot = this.snapshots.get(entry.delta.fromWorld)
+      if (!parentSnapshot) {
+        continue
+      }
+
+      const snapshot = applyDeltaToSnapshot(parentSnapshot, entry.delta.patches)
+      this.worlds.set(entry.world.worldId, {
+        world: entry.world,
+        delta: entry.delta
+      })
+      this.snapshots.set(entry.world.worldId, snapshot)
+
+      if (!this.children.has(entry.world.worldId)) {
+        this.children.set(entry.world.worldId, new Set())
+      }
+
+      if (entry.delta.fromWorld !== entry.world.worldId) {
+        if (!this.children.has(entry.delta.fromWorld)) {
+          this.children.set(entry.delta.fromWorld, new Set())
+        }
+        this.children.get(entry.delta.fromWorld)?.add(entry.world.worldId)
+      }
     }
   }
 
@@ -94,35 +341,106 @@ class FileBackedWorldStore implements WorldStore {
   }
 
   async initializeGenesis(world: World, snapshot: Snapshot): Promise<void> {
-    await this.inner.initializeGenesis(world, snapshot)
-    this.payload.genesis = { world, snapshot }
+    const sanitizedSnapshot = sanitizeSnapshot(snapshot)
+    const genesisDelta: WorldDelta = {
+      fromWorld: world.worldId,
+      toWorld: world.worldId,
+      patches: [],
+      createdAt: world.createdAt
+    }
+
+    this.worlds.clear()
+    this.snapshots.clear()
+    this.children.clear()
+
+    this.worlds.set(world.worldId, {
+      world,
+      delta: genesisDelta
+    })
+    this.snapshots.set(world.worldId, sanitizedSnapshot)
+    this.children.set(world.worldId, new Set())
+
+    this.payload.genesis = {
+      world,
+      snapshot: sanitizedSnapshot
+    }
+    this.payload.entries = []
     this.schedulePersist()
   }
 
   async store(world: World, delta: WorldDelta): Promise<void> {
-    await this.inner.store(world, delta)
+    const parentSnapshot = this.snapshots.get(delta.fromWorld)
+    if (!parentSnapshot) {
+      throw new Error(`Parent snapshot not found for World: ${String(delta.fromWorld)}`)
+    }
+
+    const snapshot = applyDeltaToSnapshot(parentSnapshot, delta.patches)
+
+    this.worlds.set(world.worldId, {
+      world,
+      delta
+    })
+    this.snapshots.set(world.worldId, snapshot)
+
+    if (!this.children.has(world.worldId)) {
+      this.children.set(world.worldId, new Set())
+    }
+
+    if (delta.fromWorld !== world.worldId) {
+      if (!this.children.has(delta.fromWorld)) {
+        this.children.set(delta.fromWorld, new Set())
+      }
+      this.children.get(delta.fromWorld)?.add(world.worldId)
+    }
+
     this.payload.entries.push({ world, delta })
     this.schedulePersist()
   }
 
   async restore(worldId: WorldId): Promise<Snapshot> {
-    return this.inner.restore(worldId)
+    const snapshot = this.snapshots.get(worldId)
+    if (!snapshot) {
+      throw new Error(`World not found: ${String(worldId)}`)
+    }
+    return structuredClone(snapshot) as Snapshot
   }
 
   async getWorld(worldId: WorldId): Promise<World | null> {
-    return this.inner.getWorld(worldId)
+    return this.worlds.get(worldId)?.world ?? null
   }
 
   async has(worldId: WorldId): Promise<boolean> {
-    return this.inner.has(worldId)
+    return this.worlds.has(worldId)
   }
 
   async getChildren(worldId: WorldId): Promise<readonly WorldId[]> {
-    return this.inner.getChildren(worldId)
+    const children = this.children.get(worldId)
+    return children ? Array.from(children) : []
   }
 
   async getLineage(worldId: WorldId): Promise<readonly WorldId[]> {
-    return this.inner.getLineage(worldId)
+    const lineage: WorldId[] = []
+    let current: WorldId | null = worldId
+    const visited = new Set<WorldId>()
+
+    while (current && !visited.has(current)) {
+      visited.add(current)
+      lineage.push(current)
+
+      const entry = this.worlds.get(current)
+      if (!entry) {
+        break
+      }
+
+      const parent = entry.delta.fromWorld
+      if (parent === current) {
+        break
+      }
+
+      current = parent
+    }
+
+    return lineage
   }
 }
 
