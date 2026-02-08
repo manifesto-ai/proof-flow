@@ -111,6 +111,7 @@
 - [x] host 회귀 테스트 추가: goal-range 매핑/루트 fallback 검증
 - [x] `dag.extract` 입력 소스 확장 1차: `loadGoals` adapter hook + diagnostics/hover/command probe 수집 경로 추가
 - [x] `proof-flow.goalCoverageReport` 커맨드 추가(활성 DAG goal 채움률 즉시 측정)
+- [x] command probe 2차 강화: Lean goal command 동적 탐색 + 다중 호출 시그니처 + source stats 집계
 - [ ] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API) 직접 연동
 - [ ] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
 - [ ] 리포트: 정확도/누락 케이스/실패 패턴 문서화

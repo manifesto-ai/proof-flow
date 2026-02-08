@@ -32,12 +32,23 @@ const isLeanDocument = (document: vscode.TextDocument): boolean => (
 const isLeanUri = (uri: vscode.Uri): boolean => uri.path.endsWith('.lean')
 
 const LEAN_GOAL_COMMAND_CANDIDATES = [
+  'lean4.infoview.api.getGoals',
   'lean4.infoview.getGoals',
   'lean4.getGoals',
-  'lean4.goalState'
+  'lean4.goalState',
+  'lean4.goals'
 ] as const
 
-let cachedGoalCommand: string | null | undefined
+type GoalSourceStats = {
+  diagnosticHints: number
+  hoverHints: number
+  commandHints: number
+  commandsUsed: string[]
+}
+
+const goalSourceStatsByFileUri = new Map<string, GoalSourceStats>()
+
+let cachedGoalCommands: string[] | undefined
 
 const toVscodeRange = (range: Range): vscode.Range => {
   const startLine = Math.max(range.startLine - 1, 0)
@@ -297,9 +308,9 @@ const normalizeGoalHints = (raw: unknown, source: string): LeanGoalHint[] => {
   return hints
 }
 
-const resolveLeanGoalCommand = async (): Promise<string | null> => {
-  if (cachedGoalCommand !== undefined) {
-    return cachedGoalCommand
+const discoverLeanGoalCommands = async (): Promise<string[]> => {
+  if (cachedGoalCommands) {
+    return cachedGoalCommands
   }
 
   const commandsApi = vscode.commands as typeof vscode.commands & {
@@ -307,36 +318,100 @@ const resolveLeanGoalCommand = async (): Promise<string | null> => {
   }
 
   if (typeof commandsApi.getCommands !== 'function') {
-    cachedGoalCommand = null
-    return null
+    cachedGoalCommands = []
+    return cachedGoalCommands
   }
 
   try {
     const all = await commandsApi.getCommands(true)
-    const matched = LEAN_GOAL_COMMAND_CANDIDATES.find((command) => all.includes(command)) ?? null
-    cachedGoalCommand = matched
-    return matched
+    const discovered = all.filter((command) => (
+      command.startsWith('lean4.')
+      && /(goal|infoview)/i.test(command)
+      && /(get|fetch|request|state|goals)/i.test(command)
+    ))
+
+    const merged = [...LEAN_GOAL_COMMAND_CANDIDATES, ...discovered]
+    const unique: string[] = []
+    for (const command of merged) {
+      if (!all.includes(command)) {
+        continue
+      }
+      if (!unique.includes(command)) {
+        unique.push(command)
+      }
+    }
+
+    cachedGoalCommands = unique
+    return cachedGoalCommands
   }
   catch {
-    cachedGoalCommand = null
-    return null
+    cachedGoalCommands = []
+    return cachedGoalCommands
   }
 }
 
-const loadGoalHintsFromLeanCommand = async (fileUri: string): Promise<LeanGoalHint[]> => {
-  const command = await resolveLeanGoalCommand()
-  if (!command) {
-    return []
+const buildGoalCommandArgs = (
+  fileUri: string,
+  diagnostics: readonly vscode.Diagnostic[]
+): unknown[][] => {
+  const uri = vscode.Uri.parse(fileUri)
+  const first = diagnostics[0]
+  const line = first?.range.start.line ?? 0
+  const character = first?.range.start.character ?? 0
+
+  return [
+    [{ fileUri }],
+    [{ uri: fileUri }],
+    [fileUri],
+    [uri],
+    [{ fileUri, position: { line: line + 1, column: character } }],
+    [{ uri: fileUri, position: { line: line + 1, column: character } }],
+    [uri, new vscode.Position(line, character)],
+    [uri, { line, character }],
+    []
+  ]
+}
+
+const loadGoalHintsFromLeanCommands = async (
+  fileUri: string,
+  diagnostics: readonly vscode.Diagnostic[]
+): Promise<{ hints: LeanGoalHint[]; commandsUsed: string[] }> => {
+  const commands = await discoverLeanGoalCommands()
+  if (commands.length === 0) {
+    return { hints: [], commandsUsed: [] }
   }
 
   const execute = vscode.commands.executeCommand as unknown as (command: string, ...args: unknown[]) => Promise<unknown>
-  try {
-    const payload = await execute(command, { fileUri })
-    return normalizeGoalHints(payload, `command:${command}`)
+  const hints: LeanGoalHint[] = []
+  const commandsUsed: string[] = []
+  const argsCandidates = buildGoalCommandArgs(fileUri, diagnostics)
+  const maxCommands = 4
+
+  for (const command of commands.slice(0, maxCommands)) {
+    let commandMatched = false
+    for (const args of argsCandidates) {
+      try {
+        const payload = await execute(command, ...args)
+        const normalized = normalizeGoalHints(payload, `command:${command}`)
+        if (normalized.length === 0) {
+          continue
+        }
+
+        hints.push(...normalized)
+        commandMatched = true
+        break
+      }
+      catch {
+        // Ignore signature mismatch and continue probing next call shape.
+      }
+    }
+
+    if (commandMatched) {
+      commandsUsed.push(command)
+    }
   }
-  catch {
-    return []
-  }
+
+  return { hints, commandsUsed }
 }
 
 const proofFlowEffects: Effects = createProofFlowEffects({
@@ -357,13 +432,21 @@ const proofFlowEffects: Effects = createProofFlowEffects({
       const diagnostics = vscode.languages.getDiagnostics(uri)
       const diagnosticHints = context.goals ?? extractGoalHintsFromDiagnostics(diagnostics)
       const hoverHints = await extractGoalHintsFromHoverProvider(uri, diagnostics)
-      const commandHints = await loadGoalHintsFromLeanCommand(fileUri)
-
-      return [
+      const commandResult = await loadGoalHintsFromLeanCommands(fileUri, diagnostics)
+      const merged = [
         ...diagnosticHints,
         ...hoverHints,
-        ...commandHints
+        ...commandResult.hints
       ]
+
+      goalSourceStatsByFileUri.set(fileUri, {
+        diagnosticHints: diagnosticHints.length,
+        hoverHints: hoverHints.length,
+        commandHints: commandResult.hints.length,
+        commandsUsed: commandResult.commandsUsed
+      })
+
+      return merged
     }
   },
   editorReveal: {
@@ -525,7 +608,12 @@ const reportGoalCoverage = async (): Promise<void> => {
   const withGoal = nodes.filter((node) => typeof node.goal === 'string' && node.goal.trim().length > 0).length
   const ratio = totalNodes > 0 ? withGoal / totalNodes : 0
   const percent = (ratio * 100).toFixed(1)
-  const message = `[ProofFlow] Goal coverage ${withGoal}/${totalNodes} (${percent}%)`
+  const stats = goalSourceStatsByFileUri.get(activeFileUri)
+  const sourceSummary = stats
+    ? ` | hints d/h/c=${stats.diagnosticHints}/${stats.hoverHints}/${stats.commandHints}`
+      + (stats.commandsUsed.length > 0 ? ` | cmds=${stats.commandsUsed.join(',')}` : '')
+    : ''
+  const message = `[ProofFlow] Goal coverage ${withGoal}/${totalNodes} (${percent}%)${sourceSummary}`
   void vscode.window.showInformationMessage(message)
 }
 
@@ -705,10 +793,14 @@ export async function deactivate() {
 
   if (!app) {
     attemptFingerprints.clear()
+    goalSourceStatsByFileUri.clear()
+    cachedGoalCommands = undefined
     return
   }
 
   await app.dispose()
   app = null
   attemptFingerprints.clear()
+  goalSourceStatsByFileUri.clear()
+  cachedGoalCommands = undefined
 }

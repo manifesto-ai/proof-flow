@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { App } from '@manifesto-ai/app'
-import type { Snapshot, WorldId } from '@manifesto-ai/app'
+import type { Snapshot, WorldId, WorldStore } from '@manifesto-ai/app'
 import type { ProofFlowState } from '@proof-flow/schema'
 import { createAttemptRecordEffect } from '../packages/host/src/effects/attempt-record.js'
 import { createProofFlowApp } from '../packages/app/src/config.js'
@@ -24,6 +24,37 @@ const delay = async (ms: number): Promise<void> => {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+const waitUntil = async (
+  condition: () => Promise<boolean>,
+  options: { timeoutMs: number; intervalMs: number }
+): Promise<boolean> => {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < options.timeoutMs) {
+    if (await condition()) {
+      return true
+    }
+    await delay(options.intervalMs)
+  }
+
+  return false
+}
+
+const waitForPersistedWorld = async (
+  rootPath: string,
+  worldId: WorldId
+): Promise<WorldStore | null> => {
+  let restoredStore: WorldStore | null = null
+  const ok = await waitUntil(async () => {
+    restoredStore = await createProofFlowWorldStore({ rootPath })
+    return restoredStore.has(worldId)
+  }, {
+    timeoutMs: 1200,
+    intervalMs: 40
+  })
+
+  return ok ? restoredStore : null
 }
 
 afterEach(async () => {
@@ -80,18 +111,14 @@ describe('Attempt replay and restore', () => {
     await appA.dispose()
     apps.splice(apps.indexOf(appA), 1)
 
-    // File-backed world persistence is async.
-    await delay(40)
-
     expect(headAfterAttempt).toBeDefined()
-    const restoredStore = await createProofFlowWorldStore({ rootPath })
+    const restoredStore = await waitForPersistedWorld(rootPath, headAfterAttempt as WorldId)
+    expect(restoredStore).not.toBeNull()
 
-    expect(await restoredStore.has(headAfterAttempt as WorldId)).toBe(true)
-
-    const lineage = await restoredStore.getLineage?.(headAfterAttempt as WorldId)
+    const lineage = await restoredStore?.getLineage?.(headAfterAttempt as WorldId)
     expect(lineage?.[0]).toBe(headAfterAttempt)
 
-    const snapshot = await restoredStore.restore(headAfterAttempt as WorldId) as Snapshot
+    const snapshot = await restoredStore?.restore(headAfterAttempt as WorldId) as Snapshot
     const restoredData = snapshot.data as ProofFlowState
 
     expect(restoredData.history.files[fileUri]?.nodes[nodeId]?.totalAttempts).toBe(1)
