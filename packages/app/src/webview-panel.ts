@@ -1,47 +1,7 @@
 import * as vscode from 'vscode'
-import type { AppState } from '@manifesto-ai/app'
-import type {
-  DagMetrics,
-  LayoutDirection,
-  ProofDAG,
-  ProofFlowState,
-  ProofNode
-} from '@proof-flow/schema'
-
-export type ProjectionNode = {
-  id: string
-  label: string
-  kind: ProofNode['kind']
-  statusKind: ProofNode['status']['kind']
-  errorMessage: string | null
-  errorCategory: ProofNode['status']['errorCategory']
-  startLine: number
-  endLine: number
-  startCol: number
-  endCol: number
-  children: string[]
-  dependencies: string[]
-}
-
-export type ProjectionState = {
-  ui: {
-    panelVisible: boolean
-    activeFileUri: string | null
-    selectedNodeId: string | null
-    cursorNodeId: string | null
-    layout: LayoutDirection
-    zoom: number
-    collapseResolved: boolean
-  }
-  activeDag: {
-    fileUri: string
-    rootIds: string[]
-    totalNodes: number
-  } | null
-  summaryMetrics: DagMetrics | null
-  nodes: ProjectionNode[]
-  selectedNode: ProjectionNode | null
-}
+import type { LayoutDirection } from '@proof-flow/schema'
+import type { ProjectionState } from './projection-state.js'
+export { selectProjectionState } from './projection-state.js'
 
 export type ProjectionPanelActions = {
   onNodeSelect: (nodeId: string) => Promise<void>
@@ -65,96 +25,24 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>
 }
 
-const toProjectionNode = (node: ProofNode): ProjectionNode => ({
-  id: node.id,
-  label: node.label,
-  kind: node.kind,
-  statusKind: node.status.kind,
-  errorMessage: node.status.errorMessage,
-  errorCategory: node.status.errorCategory,
-  startLine: node.leanRange.startLine,
-  endLine: node.leanRange.endLine,
-  startCol: node.leanRange.startCol,
-  endCol: node.leanRange.endCol,
-  children: [...node.children],
-  dependencies: [...node.dependencies]
+const initialProjectionState = (): ProjectionState => ({
+  ui: {
+    panelVisible: true,
+    activeFileUri: null,
+    selectedNodeId: null,
+    cursorNodeId: null,
+    layout: 'topDown',
+    zoom: 1,
+    collapseResolved: false
+  },
+  activeDag: null,
+  summaryMetrics: null,
+  nodes: [],
+  selectedNode: null
 })
 
-const toProjectionNodes = (dag: ProofDAG | null): ProjectionNode[] => {
-  if (!dag) {
-    return []
-  }
-
-  return Object.values(dag.nodes)
-    .map(toProjectionNode)
-    .sort((left, right) => {
-      if (left.startLine !== right.startLine) {
-        return left.startLine - right.startLine
-      }
-
-      if (left.startCol !== right.startCol) {
-        return left.startCol - right.startCol
-      }
-
-      return left.id.localeCompare(right.id)
-    })
-}
-
-export const selectProjectionState = (appState: AppState<unknown>): ProjectionState => {
-  const state = appState.data as ProofFlowState
-  const computed = appState.computed as Record<string, unknown>
-  const activeDag = (computed['computed.activeDag'] as ProofDAG | null) ?? null
-  const selectedNodeRaw = computed['computed.selectedNode'] as ProofNode | null | undefined
-  const nodes = toProjectionNodes(activeDag)
-
-  return {
-    ui: {
-      panelVisible: state.ui.panelVisible,
-      activeFileUri: state.ui.activeFileUri,
-      selectedNodeId: state.ui.selectedNodeId,
-      cursorNodeId: state.ui.cursorNodeId,
-      layout: state.ui.layout,
-      zoom: state.ui.zoom,
-      collapseResolved: state.ui.collapseResolved
-    },
-    activeDag: activeDag
-      ? {
-          fileUri: activeDag.fileUri,
-          rootIds: [...activeDag.rootIds],
-          totalNodes: Object.keys(activeDag.nodes).length
-        }
-      : null,
-    summaryMetrics: (computed['computed.summaryMetrics'] as DagMetrics | null) ?? null,
-    nodes,
-    selectedNode: selectedNodeRaw ? toProjectionNode(selectedNodeRaw) : null
-  }
-}
-
-const escapeHtml = (value: string): string => (
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-)
-
 const initialStateForHtml = (state: ProjectionState | null): string => {
-  const encoded = JSON.stringify(state ?? {
-    ui: {
-      panelVisible: true,
-      activeFileUri: null,
-      selectedNodeId: null,
-      cursorNodeId: null,
-      layout: 'topDown',
-      zoom: 1,
-      collapseResolved: false
-    },
-    activeDag: null,
-    summaryMetrics: null,
-    nodes: [],
-    selectedNode: null
-  })
+  const encoded = JSON.stringify(state ?? initialProjectionState())
   return encoded.replace(/</g, '\\u003c')
 }
 
@@ -177,16 +65,22 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
       --warn: #ffbf47;
       --prog: #58a6ff;
       --line: #263241;
+      --focus: #4b7db2;
+      --node-height: 74px;
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
+      padding: 10px;
       font: 13px/1.45 "Iosevka", "IBM Plex Sans KR", sans-serif;
       background: radial-gradient(circle at top right, #1f2a34 0, var(--bg) 45%);
       color: var(--text);
-      padding: 10px;
     }
+
     .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
     .card {
       background: linear-gradient(160deg, var(--panel), var(--panel-2));
       border: 1px solid var(--line);
@@ -194,6 +88,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
       padding: 10px;
       margin-bottom: 8px;
     }
+
     .chip {
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -202,6 +97,7 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
       background: rgba(15, 19, 24, 0.35);
       font-size: 12px;
     }
+
     .btn {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -210,32 +106,81 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
       background: #1a2430;
       cursor: pointer;
     }
-    .btn:hover { border-color: #406085; }
-    .nodes { max-height: 45vh; overflow: auto; display: grid; gap: 6px; }
+
+    .btn:hover { border-color: var(--focus); }
+
+    .meta { color: var(--muted); font-size: 12px; }
+
+    .status-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(15, 19, 24, 0.35);
+    }
+
+    .control-input {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 8px;
+      color: var(--text);
+      background: #111920;
+      outline: none;
+    }
+
+    .control-input:focus { border-color: var(--focus); }
+
+    .nodes {
+      max-height: 48vh;
+      min-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px;
+      background: rgba(15, 19, 24, 0.45);
+    }
+
     .node {
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 8px;
+      margin-bottom: 6px;
+      min-height: var(--node-height);
       background: #141b23;
       cursor: pointer;
     }
-    .node:hover { border-color: #406085; }
+
+    .node:hover { border-color: var(--focus); }
     .node.selected { border-color: #58a6ff; background: #172335; }
     .node.cursor { box-shadow: 0 0 0 1px #ffbf47 inset; }
+
     .status { font-weight: 700; }
     .status.resolved { color: var(--ok); }
     .status.error { color: var(--err); }
     .status.sorry { color: var(--warn); }
     .status.in_progress { color: var(--prog); }
-    .meta { color: var(--muted); font-size: 12px; }
+
     .empty { color: var(--muted); padding: 16px 0; }
+
     input[type=range] { width: 140px; }
+
+    pre.meta {
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.35 "Iosevka", monospace;
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="row" id="summary"></div>
   </div>
+
   <div class="card">
     <div class="row" style="align-items:center;">
       <button class="btn" id="toggleLayout">Layout</button>
@@ -245,47 +190,154 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
       <input id="zoom" type="range" min="0.1" max="5" step="0.1" value="1" />
       <span class="meta" id="zoomValue">1.0x</span>
     </div>
+    <div class="row" style="align-items:center; margin-top: 8px;">
+      <input id="nodeSearch" class="control-input" type="search" placeholder="Search node label/id/error" />
+      <select id="nodeSort" class="control-input">
+        <option value="position">Sort: Position</option>
+        <option value="status">Sort: Status</option>
+        <option value="label">Sort: Label</option>
+      </select>
+      <label class="status-filter"><input type="checkbox" data-status-filter="error" checked /> error</label>
+      <label class="status-filter"><input type="checkbox" data-status-filter="sorry" checked /> sorry</label>
+      <label class="status-filter"><input type="checkbox" data-status-filter="in_progress" checked /> in-progress</label>
+      <label class="status-filter"><input type="checkbox" data-status-filter="resolved" checked /> resolved</label>
+    </div>
   </div>
+
   <div class="card">
     <div class="meta" id="activeFile">No active Lean file</div>
+    <div class="meta" id="visibleInfo" style="margin-top:4px;"></div>
     <div class="nodes" id="nodes"></div>
   </div>
+
   <div class="card">
     <div id="selected"></div>
   </div>
+
   <script>
     const vscode = acquireVsCodeApi();
     const stateEl = ${JSON.stringify(initialStateForHtml(state))};
     let state = JSON.parse(stateEl);
 
+    const view = {
+      query: '',
+      sort: 'position',
+      status: {
+        resolved: true,
+        error: true,
+        sorry: true,
+        in_progress: true
+      }
+    };
+
+    const VIRTUAL_ROW_HEIGHT = 80;
+    const VIRTUAL_OVERSCAN = 10;
+    let visibleNodes = [];
+    let scrollRenderQueued = false;
+
     const summaryEl = document.getElementById('summary');
     const activeFileEl = document.getElementById('activeFile');
+    const visibleInfoEl = document.getElementById('visibleInfo');
     const nodesEl = document.getElementById('nodes');
     const selectedEl = document.getElementById('selected');
     const zoomEl = document.getElementById('zoom');
     const zoomValueEl = document.getElementById('zoomValue');
+    const searchEl = document.getElementById('nodeSearch');
+    const sortEl = document.getElementById('nodeSort');
 
-    document.getElementById('togglePanel').addEventListener('click', () => {
-      vscode.postMessage({ type: 'togglePanel' });
-    });
-    document.getElementById('toggleCollapse').addEventListener('click', () => {
-      vscode.postMessage({ type: 'toggleCollapse' });
-    });
-    document.getElementById('toggleLayout').addEventListener('click', () => {
-      const next = state.ui.layout === 'topDown' ? 'leftRight' : 'topDown';
-      vscode.postMessage({ type: 'setLayout', payload: { layout: next } });
-    });
-    zoomEl.addEventListener('change', () => {
-      vscode.postMessage({ type: 'setZoom', payload: { zoom: Number(zoomEl.value) } });
-    });
+    const statusOrder = {
+      error: 0,
+      sorry: 1,
+      in_progress: 2,
+      resolved: 3
+    };
+
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
 
     const statusClass = (kind) => kind === 'in_progress' ? 'in_progress' : kind;
 
-    const render = () => {
+    const compareByPosition = (left, right) => {
+      if (left.startLine !== right.startLine) {
+        return left.startLine - right.startLine;
+      }
+      if (left.startCol !== right.startCol) {
+        return left.startCol - right.startCol;
+      }
+      return left.id.localeCompare(right.id);
+    };
+
+    const compareByStatus = (left, right) => {
+      const leftRank = statusOrder[left.statusKind] ?? 99;
+      const rightRank = statusOrder[right.statusKind] ?? 99;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return compareByPosition(left, right);
+    };
+
+    const compareByLabel = (left, right) => {
+      const leftLabel = (left.label || left.id).toLowerCase();
+      const rightLabel = (right.label || right.id).toLowerCase();
+      const cmp = leftLabel.localeCompare(rightLabel);
+      if (cmp !== 0) {
+        return cmp;
+      }
+      return compareByPosition(left, right);
+    };
+
+    const sortNodes = (nodes) => {
+      const copied = [...nodes];
+      switch (view.sort) {
+        case 'status':
+          copied.sort(compareByStatus);
+          return copied;
+        case 'label':
+          copied.sort(compareByLabel);
+          return copied;
+        case 'position':
+        default:
+          copied.sort(compareByPosition);
+          return copied;
+      }
+    };
+
+    const computeVisibleNodes = () => {
+      const query = view.query.trim().toLowerCase();
+      let nodes = state.nodes;
+
+      if (state.ui.collapseResolved) {
+        nodes = nodes.filter((node) => node.statusKind !== 'resolved');
+      }
+
+      nodes = nodes.filter((node) => view.status[node.statusKind]);
+
+      if (query.length > 0) {
+        nodes = nodes.filter((node) => {
+          const haystack = [
+            node.id,
+            node.label,
+            node.kind,
+            node.errorCategory || '',
+            node.errorMessage || ''
+          ].join(' ').toLowerCase();
+          return haystack.includes(query);
+        });
+      }
+
+      return sortNodes(nodes);
+    };
+
+    const updateSummary = () => {
       const metrics = state.summaryMetrics;
       const total = metrics ? metrics.totalNodes : 0;
       summaryEl.innerHTML = [
         '<span class="chip">Total: ' + total + '</span>',
+        '<span class="chip">Visible: ' + visibleNodes.length + '</span>',
         '<span class="chip">Resolved: ' + (metrics ? metrics.resolvedCount : 0) + '</span>',
         '<span class="chip">Errors: ' + (metrics ? metrics.errorCount : 0) + '</span>',
         '<span class="chip">Sorry: ' + (metrics ? metrics.sorryCount : 0) + '</span>',
@@ -297,51 +349,154 @@ const renderHtml = (state: ProjectionState | null): string => `<!doctype html>
         ? 'File: ' + state.ui.activeFileUri + ' | Layout: ' + state.ui.layout
         : 'No active Lean file';
 
-      const visibleNodes = state.ui.collapseResolved
-        ? state.nodes.filter((node) => node.statusKind !== 'resolved')
-        : state.nodes;
+      visibleInfoEl.textContent = 'Visible ' + visibleNodes.length + ' / ' + state.nodes.length
+        + ' | Query: ' + (view.query.trim().length > 0 ? view.query.trim() : '(none)');
+    };
 
+    const renderNodeWindow = () => {
       if (visibleNodes.length === 0) {
         nodesEl.innerHTML = '<div class="empty">No nodes to display.</div>';
-      } else {
-        nodesEl.innerHTML = visibleNodes.map((node) => {
+        return;
+      }
+
+      const viewportHeight = Math.max(nodesEl.clientHeight, VIRTUAL_ROW_HEIGHT);
+      const startIndex = Math.max(0, Math.floor(nodesEl.scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+      const maxItems = Math.ceil(viewportHeight / VIRTUAL_ROW_HEIGHT) + (VIRTUAL_OVERSCAN * 2);
+      const endIndex = Math.min(visibleNodes.length, startIndex + maxItems);
+
+      const topPadding = startIndex * VIRTUAL_ROW_HEIGHT;
+      const bottomPadding = Math.max(0, (visibleNodes.length - endIndex) * VIRTUAL_ROW_HEIGHT);
+
+      const rows = visibleNodes
+        .slice(startIndex, endIndex)
+        .map((node) => {
           const selected = state.ui.selectedNodeId === node.id ? 'selected' : '';
           const cursor = state.ui.cursorNodeId === node.id ? 'cursor' : '';
+          const label = escapeHtml(node.label || node.id);
+
           return ''
             + '<article class="node ' + selected + ' ' + cursor + '" data-node-id="' + escapeHtml(node.id) + '">'
-            + '  <div><strong>' + escapeHtml(node.label || node.id) + '</strong></div>'
+            + '  <div><strong>' + label + '</strong></div>'
             + '  <div class="meta">' + escapeHtml(node.kind) + ' · line ' + node.startLine + '-' + node.endLine + '</div>'
             + '  <div class="status ' + statusClass(node.statusKind) + '">' + escapeHtml(node.statusKind) + '</div>'
             + '</article>';
-        }).join('');
-      }
+        })
+        .join('');
 
+      nodesEl.innerHTML = ''
+        + '<div style="height:' + topPadding + 'px;"></div>'
+        + rows
+        + '<div style="height:' + bottomPadding + 'px;"></div>';
+    };
+
+    const renderSelected = () => {
       const selected = state.selectedNode;
       if (!selected) {
         selectedEl.innerHTML = '<div class="empty">Select a node to inspect details.</div>';
-      } else {
-        selectedEl.innerHTML = ''
-          + '<div><strong>' + escapeHtml(selected.id) + '</strong></div>'
-          + '<div class="meta">' + escapeHtml(selected.kind) + ' · '
-          + 'line ' + selected.startLine + ':' + selected.startCol + ' - '
-          + selected.endLine + ':' + selected.endCol + '</div>'
-          + '<div class="status ' + statusClass(selected.statusKind) + '">' + escapeHtml(selected.statusKind) + '</div>'
-          + (selected.errorCategory ? '<div class="meta">Category: ' + escapeHtml(selected.errorCategory) + '</div>' : '')
-          + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '');
+        return;
       }
+
+      selectedEl.innerHTML = ''
+        + '<div><strong>' + escapeHtml(selected.id) + '</strong></div>'
+        + '<div class="meta">' + escapeHtml(selected.kind) + ' · '
+        + 'line ' + selected.startLine + ':' + selected.startCol + ' - '
+        + selected.endLine + ':' + selected.endCol + '</div>'
+        + '<div class="status ' + statusClass(selected.statusKind) + '">' + escapeHtml(selected.statusKind) + '</div>'
+        + (selected.errorCategory ? '<div class="meta">Category: ' + escapeHtml(selected.errorCategory) + '</div>' : '')
+        + (selected.errorMessage ? '<pre class="meta">' + escapeHtml(selected.errorMessage) + '</pre>' : '');
+    };
+
+    const render = ({ resetScroll = false } = {}) => {
+      visibleNodes = computeVisibleNodes();
+      if (resetScroll) {
+        nodesEl.scrollTop = 0;
+      }
+      updateSummary();
+      renderNodeWindow();
+      renderSelected();
 
       zoomEl.value = String(state.ui.zoom);
       zoomValueEl.textContent = Number(state.ui.zoom).toFixed(1) + 'x';
-
-      document.querySelectorAll('[data-node-id]').forEach((el) => {
-        el.addEventListener('click', () => {
-          const nodeId = el.getAttribute('data-node-id');
-          if (nodeId) {
-            vscode.postMessage({ type: 'nodeClick', payload: { nodeId } });
-          }
-        });
+      searchEl.value = view.query;
+      sortEl.value = view.sort;
+      document.querySelectorAll('[data-status-filter]').forEach((element) => {
+        const input = element;
+        const status = input.getAttribute('data-status-filter');
+        if (!status) {
+          return;
+        }
+        input.checked = !!view.status[status];
       });
     };
+
+    const queueScrollRender = () => {
+      if (scrollRenderQueued) {
+        return;
+      }
+      scrollRenderQueued = true;
+      requestAnimationFrame(() => {
+        scrollRenderQueued = false;
+        renderNodeWindow();
+      });
+    };
+
+    document.getElementById('togglePanel').addEventListener('click', () => {
+      vscode.postMessage({ type: 'togglePanel' });
+    });
+
+    document.getElementById('toggleCollapse').addEventListener('click', () => {
+      vscode.postMessage({ type: 'toggleCollapse' });
+    });
+
+    document.getElementById('toggleLayout').addEventListener('click', () => {
+      const next = state.ui.layout === 'topDown' ? 'leftRight' : 'topDown';
+      vscode.postMessage({ type: 'setLayout', payload: { layout: next } });
+    });
+
+    zoomEl.addEventListener('change', () => {
+      vscode.postMessage({ type: 'setZoom', payload: { zoom: Number(zoomEl.value) } });
+    });
+
+    searchEl.addEventListener('input', () => {
+      view.query = searchEl.value;
+      render({ resetScroll: true });
+    });
+
+    sortEl.addEventListener('change', () => {
+      view.sort = sortEl.value;
+      render({ resetScroll: true });
+    });
+
+    document.querySelectorAll('[data-status-filter]').forEach((element) => {
+      element.addEventListener('change', () => {
+        const input = element;
+        const status = input.getAttribute('data-status-filter');
+        if (!status) {
+          return;
+        }
+        view.status[status] = input.checked;
+        render({ resetScroll: true });
+      });
+    });
+
+    nodesEl.addEventListener('scroll', queueScrollRender);
+
+    nodesEl.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const row = target.closest('[data-node-id]');
+      if (!row) {
+        return;
+      }
+
+      const nodeId = row.getAttribute('data-node-id');
+      if (nodeId) {
+        vscode.postMessage({ type: 'nodeClick', payload: { nodeId } });
+      }
+    });
 
     window.addEventListener('message', (event) => {
       const message = event.data;

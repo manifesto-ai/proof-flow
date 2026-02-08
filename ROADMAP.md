@@ -10,7 +10,7 @@
 - ✅ Custom World adapter baseline (persisted MemoryWorldStore)
 - ✅ Host effect implementation (`dag.extract` parser + validation pipeline)
 - ✅ Lineage/replay invariants test baseline
-- ✅ Projection-only UI baseline (WebView + app.subscribe projection)
+- ✅ Projection-only UI enhanced (WebView projection + search/filter/sort + virtual list)
 
 ## Checkpoints
 
@@ -43,3 +43,5 @@
 ### 5. Projection-Only UI (최후순위)
 - [x] Read-only projection from `Snapshot.data` and `Snapshot.computed`
 - [x] DAG view + summary metrics (no domain logic in UI)
+- [x] Node search / status filter / sort controls
+- [x] Virtualized list rendering for large DAGs
