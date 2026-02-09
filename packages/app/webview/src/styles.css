@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Iosevka', 'IBM Plex Sans KR', 'Space Grotesk', sans-serif;
+  background:
+    radial-gradient(circle at 10% 8%, rgba(56, 189, 248, 0.12), transparent 35%),
+    radial-gradient(circle at 90% 0%, rgba(16, 185, 129, 0.12), transparent 40%),
+    #0a1019;
+  color: #e2e8f0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#root {
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+pre {
+  margin: 0;
+  font-family: 'Iosevka', 'IBM Plex Mono', monospace;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__controls-button {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.react-flow__minimap {
+  display: none;
+}

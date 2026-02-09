@@ -12,25 +12,25 @@ import {
   type CreateEditorGetCursorEffectOptions
 } from './effects/cursor-get.js'
 import {
-  createAttemptRecordEffect,
-  type CreateAttemptRecordEffectOptions
-} from './effects/attempt-record.js'
+  createDiagnoseEffect,
+  type CreateDiagnoseEffectOptions
+} from './effects/diagnose.js'
 import {
-  createAttemptSuggestEffect,
-  type CreateAttemptSuggestEffectOptions
-} from './effects/attempt-suggest.js'
+  createSorryAnalyzeEffect,
+  type CreateSorryAnalyzeEffectOptions
+} from './effects/sorry-analyze.js'
 import {
-  createAttemptApplyEffect,
-  type CreateAttemptApplyEffectOptions
-} from './effects/attempt-apply.js'
+  createBreakageAnalyzeEffect,
+  type CreateBreakageAnalyzeEffectOptions
+} from './effects/breakage-analyze.js'
 
 export type CreateProofFlowEffectsOptions = {
   dagExtract: CreateDagExtractEffectOptions
   editorReveal: CreateEditorRevealEffectOptions
   editorGetCursor: CreateEditorGetCursorEffectOptions
-  attemptRecord?: CreateAttemptRecordEffectOptions
-  attemptSuggest?: CreateAttemptSuggestEffectOptions
-  attemptApply?: CreateAttemptApplyEffectOptions
+  diagnose?: CreateDiagnoseEffectOptions
+  sorryAnalyze?: CreateSorryAnalyzeEffectOptions
+  breakageAnalyze?: CreateBreakageAnalyzeEffectOptions
 }
 
 export const createProofFlowEffects = (
@@ -39,17 +39,17 @@ export const createProofFlowEffects = (
   'proof_flow.dag.extract': createDagExtractEffect(options.dagExtract),
   'proof_flow.editor.reveal': createEditorRevealEffect(options.editorReveal),
   'proof_flow.editor.getCursor': createEditorGetCursorEffect(options.editorGetCursor),
-  'proof_flow.attempt.record': createAttemptRecordEffect(options.attemptRecord),
-  'proof_flow.attempt.suggest': createAttemptSuggestEffect(options.attemptSuggest),
-  'proof_flow.attempt.apply': createAttemptApplyEffect(options.attemptApply)
+  'proof_flow.diagnose': createDiagnoseEffect(options.diagnose),
+  'proof_flow.sorry.analyze': createSorryAnalyzeEffect(options.sorryAnalyze),
+  'proof_flow.breakage.analyze': createBreakageAnalyzeEffect(options.breakageAnalyze)
 })
 
 export * from './effects/dag-extract.js'
 export * from './effects/editor-reveal.js'
 export * from './effects/cursor-get.js'
-export * from './effects/attempt-record.js'
-export * from './effects/attempt-suggest.js'
-export * from './effects/attempt-apply.js'
+export * from './effects/diagnose.js'
+export * from './effects/sorry-analyze.js'
+export * from './effects/breakage-analyze.js'
 export * from './effects/goal-signature.js'
 export * from './effects/types.js'
 export * from './lean/types.js'

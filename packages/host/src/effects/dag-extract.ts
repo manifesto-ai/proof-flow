@@ -86,9 +86,16 @@ const resolveProofDag = async (
   }
 
   const baseContext = await options.loadContext(input)
-  const extraGoals = options.loadGoals
-    ? await options.loadGoals(input, baseContext)
-    : null
+  let extraGoals: readonly LeanGoalHint[] | null | undefined = null
+  if (options.loadGoals) {
+    try {
+      extraGoals = await options.loadGoals(input, baseContext)
+    }
+    catch {
+      // Goal-source probing must not break baseline DAG extraction.
+      extraGoals = null
+    }
+  }
   const context: LeanContext = {
     ...baseContext,
     goals: [

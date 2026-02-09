@@ -1,9 +1,4 @@
 domain ProofFlow {
-
-  // ================================
-  // Types
-  // ================================
-
   type NodeKind =
     "theorem" | "lemma" | "have" | "let" | "suffices" |
     "show" | "calc_step" | "case" | "sorry" | "tactic_block"
@@ -22,6 +17,14 @@ domain ProofFlow {
     endCol: number
   }
 
+  type GoalSnapshot = {
+    before: string,
+    after: string | null,
+    tactic: string,
+    appliedLemmas: Array<string>,
+    subgoalsCreated: number
+  }
+
   type NodeStatus = {
     kind: StatusKind,
     errorMessage: string | null,
@@ -33,19 +36,20 @@ domain ProofFlow {
     kind: NodeKind,
     label: string,
     leanRange: Range,
-    goal: string | null,
+    goalCurrent: string | null,
+    goalSnapshots: Array<GoalSnapshot>,
+    estimatedDistance: number | null,
     status: NodeStatus,
     children: Array<string>,
     dependencies: Array<string>
   }
 
-  type DagMetrics = {
-    totalNodes: number,
-    resolvedCount: number,
-    errorCount: number,
-    sorryCount: number,
-    inProgressCount: number,
-    maxDepth: number
+  type ProofProgress = {
+    totalGoals: number,
+    resolvedGoals: number,
+    blockedGoals: number,
+    sorryGoals: number,
+    estimatedRemaining: number | null
   }
 
   type ProofDAG = {
@@ -53,7 +57,7 @@ domain ProofFlow {
     rootIds: Array<string>,
     nodes: Record<string, ProofNode>,
     extractedAt: number,
-    metrics: DagMetrics | null
+    progress: ProofProgress | null
   }
 
   type FileState = {
@@ -62,215 +66,112 @@ domain ProofFlow {
     lastSyncedAt: number | null
   }
 
-  type LayoutDirection = "topDown" | "leftRight"
-
-  type UiState = {
-    panelVisible: boolean,
-    activeFileUri: string | null,
-    selectedNodeId: string | null,
-    cursorNodeId: string | null,
-    layout: LayoutDirection,
-    zoom: number,
-    collapseResolved: boolean
-  }
-
-  type AttemptResult = "success" | "error" | "timeout" | "placeholder"
-
-  type AttemptRecord = {
-    id: string,
-    fileUri: string,
+  type SorryItem = {
     nodeId: string,
-    timestamp: number,
-    tactic: string,
-    tacticKey: string,
-    result: AttemptResult,
-    contextErrorCategory: ErrorCategory | null,
-    errorMessage: string | null,
-    durationMs: number | null
+    label: string,
+    goalText: string,
+    dependentCount: number,
+    estimatedDifficulty: number
   }
 
-  type NodeHistory = {
+  type SorryQueue = {
+    items: Array<SorryItem>,
+    totalSorries: number
+  }
+
+  type Diagnosis = {
     nodeId: string,
-    attempts: Record<string, AttemptRecord>,
-    currentStreak: number,
-    totalAttempts: number,
-    lastAttemptAt: number | null,
-    lastSuccessAt: number | null,
-    lastFailureAt: number | null
-  }
-
-  type FileHistory = {
-    fileUri: string,
-    nodes: Record<string, NodeHistory>,
-    totalAttempts: number,
-    updatedAt: number | null
-  }
-
-  type HistoryState = {
-    version: string,
-    files: Record<string, FileHistory>
-  }
-
-  type PatternEntry = {
-    key: string,
     errorCategory: ErrorCategory,
-    tacticKey: string,
-    successCount: number,
-    failureCount: number,
-    score: number,
-    lastUpdated: number,
-    dagFingerprint: string | null,
-    dagClusterId: string | null,
-    goalSignature: string | null
+    rawMessage: string,
+    expected: string | null,
+    actual: string | null,
+    mismatchPath: string | null,
+    hint: string | null,
+    suggestedTactic: string | null
   }
 
-  type PatternsState = {
-    version: string,
-    entries: Record<string, PatternEntry>,
-    totalAttempts: number,
-    updatedAt: number | null
+  type BreakageEdge = {
+    changedNodeId: string,
+    brokenNodeId: string,
+    errorCategory: ErrorCategory,
+    errorMessage: string | null
   }
 
-  type SuggestionEntry = {
-    nodeId: string,
-    tacticKey: string,
-    score: number,
-    sampleSize: number,
-    successRate: number,
-    sourceCategory: ErrorCategory | null,
-    generatedAt: number
+  type BreakageMap = {
+    edges: Array<BreakageEdge>,
+    lastAnalyzedAt: number | null
   }
-
-  type SuggestionState = {
-    version: string,
-    byNode: Record<string, Array<SuggestionEntry>>,
-    updatedAt: number | null
-  }
-
-  // ================================
-  // State
-  // ================================
 
   state {
-    appVersion: string = "0.1.0"
-
-    // Record<FileUri, FileState> - updated by Host handlers only
+    appVersion: string = "2.0.0"
     files: Record<string, FileState> = {}
-
-    // UI state - updated by Core flows only
-    ui: UiState = {
-      panelVisible: true,
-      activeFileUri: null,
-      selectedNodeId: null,
-      cursorNodeId: null,
-      layout: "topDown",
-      zoom: 1.0,
-      collapseResolved: false
-    }
-
-    // v0.2 (INFORMATIVE)
-    history: HistoryState = { version: "0.2.0", files: {} }
-
-    // v0.3 (INFORMATIVE)
-    patterns: PatternsState = {
-      version: "0.3.0",
-      entries: {},
-      totalAttempts: 0,
-      updatedAt: null
-    }
-
-    // v0.4 (INFORMATIVE)
-    suggestions: SuggestionState = {
-      version: "0.4.0",
-      byNode: {},
-      updatedAt: null
-    }
+    activeFileUri: string | null = null
+    selectedNodeId: string | null = null
+    cursorNodeId: string | null = null
+    panelVisible: boolean = true
+    sorryQueue: SorryQueue | null = null
+    breakageMap: BreakageMap | null = null
+    activeDiagnosis: Diagnosis | null = null
   }
-
-  // ================================
-  // Computed
-  // ================================
-
-  computed filesIndex = coalesce(files, {})
-
-  computed uiPanelVisible = coalesce(ui.panelVisible, true)
-  computed uiActiveFileUri = coalesce(ui.activeFileUri, null)
-  computed uiSelectedNodeId = coalesce(ui.selectedNodeId, null)
-  computed uiCursorNodeId = coalesce(ui.cursorNodeId, null)
-  computed uiLayout = coalesce(ui.layout, "topDown")
-  computed uiZoom = coalesce(ui.zoom, 1.0)
-  computed uiCollapseResolved = coalesce(ui.collapseResolved, false)
 
   computed activeDag =
     and(
-      isNotNull(uiActiveFileUri),
-      isNotNull(at(filesIndex, uiActiveFileUri)),
-      isNotNull(at(filesIndex, uiActiveFileUri).dag)
+      isNotNull(activeFileUri),
+      isNotNull(at(files, activeFileUri)),
+      isNotNull(at(files, activeFileUri).dag)
     )
-      ? at(filesIndex, uiActiveFileUri).dag
+      ? at(files, activeFileUri).dag
       : null
 
   computed selectedNode =
     and(
-      isNotNull(uiActiveFileUri),
-      isNotNull(uiSelectedNodeId),
-      isNotNull(at(filesIndex, uiActiveFileUri)),
-      isNotNull(at(filesIndex, uiActiveFileUri).dag),
-      isNotNull(at(at(filesIndex, uiActiveFileUri).dag.nodes, uiSelectedNodeId))
+      isNotNull(activeDag),
+      isNotNull(selectedNodeId),
+      isNotNull(at(activeDag.nodes, selectedNodeId))
     )
-      ? at(at(filesIndex, uiActiveFileUri).dag.nodes, uiSelectedNodeId)
+      ? at(activeDag.nodes, selectedNodeId)
       : null
 
-  computed summaryMetrics =
-    and(
-      isNotNull(uiActiveFileUri),
-      isNotNull(at(filesIndex, uiActiveFileUri)),
-      isNotNull(at(filesIndex, uiActiveFileUri).dag)
-    )
-      ? at(filesIndex, uiActiveFileUri).dag.metrics
+  computed progress =
+    isNotNull(activeDag)
+      ? activeDag.progress
       : null
 
-  // ================================
-  // Actions
-  // ================================
+  computed goalChain =
+    isNotNull(selectedNode)
+      ? selectedNode.goalSnapshots
+      : []
 
-  action dag_sync(fileUri: string) {
-    onceIntent {
-      effect proof_flow.dag.extract({ fileUri: fileUri })
-    }
-  }
+  computed hasSorries =
+    and(isNotNull(sorryQueue), gt(sorryQueue.totalSorries, 0))
+
+  computed hasError =
+    isNotNull(activeDiagnosis)
 
   action file_activate(fileUri: string) {
-    when neq(uiActiveFileUri, fileUri) {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: fileUri,
-        selectedNodeId: null,
-        cursorNodeId: null,
-        layout: uiLayout,
-        zoom: uiZoom,
-        collapseResolved: uiCollapseResolved
-      }
+    when neq(activeFileUri, fileUri) {
+      patch activeFileUri = fileUri
+      patch selectedNodeId = null
+      patch cursorNodeId = null
     }
   }
 
   action node_select(nodeId: string)
-    available when isNotNull(uiActiveFileUri)
+    available when isNotNull(activeFileUri)
   {
     when true {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: nodeId,
-        cursorNodeId: uiCursorNodeId,
-        layout: uiLayout,
-        zoom: uiZoom,
-        collapseResolved: uiCollapseResolved
-      }
+      patch selectedNodeId = nodeId
 
       onceIntent {
         effect proof_flow.editor.reveal({
-          fileUri: uiActiveFileUri,
+          fileUri: activeFileUri,
+          nodeId: nodeId
+        })
+      }
+
+      onceIntent {
+        effect proof_flow.diagnose({
+          fileUri: activeFileUri,
           nodeId: nodeId
         })
       }
@@ -279,154 +180,56 @@ domain ProofFlow {
 
   action cursor_sync(resolvedNodeId: string | null) {
     when true {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: uiSelectedNodeId,
-        cursorNodeId: resolvedNodeId,
-        layout: uiLayout,
-        zoom: uiZoom,
-        collapseResolved: uiCollapseResolved
-      }
+      patch cursorNodeId = resolvedNodeId
     }
   }
 
-  action panel_toggle() {
+  action panel_set(visible: boolean) {
     when true {
-      patch ui = {
-        panelVisible: not(uiPanelVisible),
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: uiSelectedNodeId,
-        cursorNodeId: uiCursorNodeId,
-        layout: uiLayout,
-        zoom: uiZoom,
-        collapseResolved: uiCollapseResolved
-      }
+      patch panelVisible = visible
     }
   }
 
-  action layout_set(layout: LayoutDirection) {
-    when true {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: uiSelectedNodeId,
-        cursorNodeId: uiCursorNodeId,
-        layout: layout,
-        zoom: uiZoom,
-        collapseResolved: uiCollapseResolved
-      }
-    }
-  }
-
-  action zoom_set(zoom: number) {
-    when true {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: uiSelectedNodeId,
-        cursorNodeId: uiCursorNodeId,
-        layout: uiLayout,
-        zoom: max(0.1, min(zoom, 5.0)),
-        collapseResolved: uiCollapseResolved
-      }
-    }
-  }
-
-  action collapse_toggle() {
-    when true {
-      patch ui = {
-        panelVisible: uiPanelVisible,
-        activeFileUri: uiActiveFileUri,
-        selectedNodeId: uiSelectedNodeId,
-        cursorNodeId: uiCursorNodeId,
-        layout: uiLayout,
-        zoom: uiZoom,
-        collapseResolved: not(uiCollapseResolved)
-      }
-    }
-  }
-
-  action attempt_record(
-    fileUri: string,
-    nodeId: string,
-    tactic: string,
-    tacticKey: string,
-    result: AttemptResult,
-    contextErrorCategory: ErrorCategory | null,
-    errorMessage: string | null,
-    durationMs: number | null
-  ) {
+  action dag_sync(fileUri: string) {
     onceIntent {
-      effect proof_flow.attempt.record({
-        fileUri: fileUri,
-        nodeId: nodeId,
-        tactic: tactic,
-        tacticKey: tacticKey,
-        result: result,
-        contextErrorCategory: contextErrorCategory,
-        errorMessage: errorMessage,
-        durationMs: durationMs
+      effect proof_flow.dag.extract({ fileUri: fileUri })
+    }
+  }
+
+  action sorry_queue_refresh()
+    available when isNotNull(activeFileUri)
+  {
+    onceIntent {
+      effect proof_flow.sorry.analyze({
+        fileUri: activeFileUri
       })
     }
   }
 
-  action attempt_apply(
-    fileUri: string,
-    nodeId: string,
-    tactic: string,
-    tacticKey: string,
-    contextErrorCategory: ErrorCategory | null,
-    errorMessage: string | null
-  ) {
+  action breakage_analyze()
+    available when isNotNull(activeFileUri)
+  {
     onceIntent {
-      effect proof_flow.attempt.apply({
-        fileUri: fileUri,
-        nodeId: nodeId,
-        tactic: tactic,
-        tacticKey: tacticKey,
-        contextErrorCategory: contextErrorCategory,
-        errorMessage: errorMessage
+      effect proof_flow.breakage.analyze({
+        fileUri: activeFileUri
       })
     }
   }
 
-  action history_clear() {
-    when true {
-      patch history = {
-        version: history.version,
-        files: {}
-      }
-    }
-  }
-
-  action patterns_reset() {
-    when true {
-      patch patterns = {
-        version: patterns.version,
-        entries: {},
-        totalAttempts: 0,
-        updatedAt: null
-      }
-    }
-  }
-
-  action attempt_suggest(fileUri: string, nodeId: string) {
+  action diagnose(nodeId: string)
+    available when isNotNull(activeFileUri)
+  {
     onceIntent {
-      effect proof_flow.attempt.suggest({
-        fileUri: fileUri,
+      effect proof_flow.diagnose({
+        fileUri: activeFileUri,
         nodeId: nodeId
       })
     }
   }
 
-  action suggestions_clear() {
+  action diagnosis_dismiss() {
     when true {
-      patch suggestions = {
-        version: suggestions.version,
-        byNode: {},
-        updatedAt: null
-      }
+      patch activeDiagnosis = null
     }
   }
 }

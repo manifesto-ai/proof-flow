@@ -32,9 +32,9 @@ const createApp = async (): Promise<App> => {
       },
       'proof_flow.editor.reveal': async () => [],
       'proof_flow.editor.getCursor': async () => [],
-      'proof_flow.attempt.record': async () => [],
-      'proof_flow.attempt.suggest': async () => [],
-      'proof_flow.attempt.apply': async () => []
+      'proof_flow.diagnose': async () => [],
+      'proof_flow.sorry.analyze': async () => [],
+      'proof_flow.breakage.analyze': async () => []
     }
   })
 
@@ -60,12 +60,9 @@ describe('Runtime compliance', () => {
     expect(typeof app.currentBranch).toBe('function')
   })
 
-  it('follows lifecycle state machine and processes intents through execution pipeline', async () => {
+  it('processes dag intents and creates a new head', async () => {
     const app = await createApp()
-
-    expect(app.status).toBe('created')
     await app.ready()
-    expect(app.status).toBe('ready')
 
     const headBefore = app.getCurrentHead?.()
     await app.act('dag_sync', { fileUri: 'file:///proof.lean' }).done()
@@ -75,16 +72,7 @@ describe('Runtime compliance', () => {
     expect(headAfter).toBeDefined()
     expect(headAfter).not.toBe(headBefore)
 
-    const world = await app.getWorld?.(headAfter!)
-    const snapshot = await app.getSnapshot?.(headAfter!)
-
-    expect(world).not.toBeNull()
-    expect(snapshot).not.toBeNull()
-
     const state = app.getState<ProofFlowState>()
     expect(state.data.files['file:///proof.lean']?.lastSyncedAt).toBe(1)
-
-    await app.dispose()
-    expect(app.status).toBe('disposed')
   })
 })

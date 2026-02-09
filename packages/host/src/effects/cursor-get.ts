@@ -88,7 +88,7 @@ export const resolveNodeIdAtCursor: ResolveCursorNodeId = (dag, cursor) => {
 
 const setCursorNodePatch = (nodeId: string | null): EffectPatch => ({
   op: 'set',
-  path: 'ui.cursorNodeId',
+  path: 'cursorNodeId',
   value: nodeId
 })
 

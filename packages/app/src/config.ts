@@ -14,32 +14,15 @@ export type ProofFlowAppOptions = {
 }
 
 const createInitialData = (): ProofFlowState => ({
-  appVersion: '0.1.0',
+  appVersion: '2.0.0',
   files: {},
-  ui: {
-    panelVisible: true,
-    activeFileUri: null,
-    selectedNodeId: null,
-    cursorNodeId: null,
-    layout: 'topDown',
-    zoom: 1,
-    collapseResolved: false
-  },
-  history: {
-    version: '0.2.0',
-    files: {}
-  },
-  patterns: {
-    version: '0.3.0',
-    entries: {},
-    totalAttempts: 0,
-    updatedAt: null
-  },
-  suggestions: {
-    version: '0.4.0',
-    byNode: {},
-    updatedAt: null
-  }
+  activeFileUri: null,
+  selectedNodeId: null,
+  cursorNodeId: null,
+  panelVisible: true,
+  sorryQueue: null,
+  breakageMap: null,
+  activeDiagnosis: null
 })
 
 /**

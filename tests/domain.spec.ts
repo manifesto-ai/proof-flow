@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createTestApp, type App, type Effects } from '@manifesto-ai/app'
-import {
-  type ProofDAG,
-  type ProofFlowState
+import type {
+  Diagnosis,
+  ProofDAG,
+  ProofFlowState
 } from '../packages/schema/src/index.js'
 
 const domainMelPromise = readFile(
@@ -39,21 +40,34 @@ const makeDag = (fileUri: string): ProofDAG => ({
       id: 'root',
       kind: 'theorem',
       label: 'root',
-      leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-      goal: null,
-      status: { kind: 'resolved', errorMessage: null, errorCategory: null },
-      children: [],
+      leanRange: { startLine: 1, startCol: 0, endLine: 2, endCol: 10 },
+      goalCurrent: null,
+      goalSnapshots: [],
+      estimatedDistance: 0,
+      status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
+      children: ['todo'],
       dependencies: []
+    },
+    todo: {
+      id: 'todo',
+      kind: 'sorry',
+      label: 'todo',
+      leanRange: { startLine: 3, startCol: 2, endLine: 3, endCol: 12 },
+      goalCurrent: '⊢ True',
+      goalSnapshots: [],
+      estimatedDistance: 1,
+      status: { kind: 'sorry', errorMessage: null, errorCategory: 'OTHER' },
+      children: [],
+      dependencies: ['root']
     }
   },
   extractedAt: 123,
-  metrics: {
-    totalNodes: 1,
-    resolvedCount: 1,
-    errorCount: 0,
-    sorryCount: 0,
-    inProgressCount: 0,
-    maxDepth: 0
+  progress: {
+    totalGoals: 1,
+    resolvedGoals: 0,
+    blockedGoals: 0,
+    sorryGoals: 1,
+    estimatedRemaining: 1
   }
 })
 
@@ -61,27 +75,25 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.dispose()))
 })
 
-describe('ProofFlow domain actions', () => {
-  it('dag.sync merges file state from host effect', async () => {
+describe('ProofFlow v2 domain actions', () => {
+  it('dag_sync merges file state from host effect', async () => {
     const fileUri = 'file:///proof.lean'
     const dag = makeDag(fileUri)
 
     const app = await createApp({
       'proof_flow.dag.extract': async (params) => {
-        const { fileUri: target } = params as { fileUri: string }
-        return [
-          {
-            op: 'merge',
-            path: 'files',
-            value: {
-              [target]: {
-                fileUri: target,
-                dag,
-                lastSyncedAt: 456
-              }
+        const target = (params as { fileUri: string }).fileUri
+        return [{
+          op: 'merge',
+          path: 'files',
+          value: {
+            [target]: {
+              fileUri: target,
+              dag,
+              lastSyncedAt: 456
             }
           }
-        ]
+        }]
       }
     })
 
@@ -89,314 +101,104 @@ describe('ProofFlow domain actions', () => {
 
     const state = app.getState<ProofFlowState>()
     expect(state.data.files[fileUri]?.dag).toEqual(dag)
-    expect(state.computed['computed.activeDag']).toBeNull()
   })
 
-  it('file.activate updates ui state', async () => {
-    const fileUri = 'file:///proof.lean'
-
+  it('file_activate updates root navigation fields', async () => {
     const app = await createApp({})
+    const fileUri = 'file:///proof.lean'
 
     await app.act('file_activate', { fileUri }).done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.ui.activeFileUri).toBe(fileUri)
-    expect(state.data.ui.selectedNodeId).toBeNull()
-    expect(state.data.ui.cursorNodeId).toBeNull()
+    expect(state.data.activeFileUri).toBe(fileUri)
+    expect(state.data.selectedNodeId).toBeNull()
+    expect(state.data.cursorNodeId).toBeNull()
   })
 
-  it('node.select sets selection and triggers editor reveal', async () => {
+  it('node_select triggers reveal and diagnose effects', async () => {
     const fileUri = 'file:///proof.lean'
-    const dag = makeDag(fileUri)
     const revealCalls: Array<{ fileUri: string; nodeId: string }> = []
+    const diagnoseCalls: Array<{ fileUri: string; nodeId: string }> = []
+    const diagnosis: Diagnosis = {
+      nodeId: 'todo',
+      errorCategory: 'UNSOLVED_GOALS',
+      rawMessage: 'unsolved goals',
+      expected: null,
+      actual: null,
+      mismatchPath: null,
+      hint: 'split goals',
+      suggestedTactic: 'cases'
+    }
 
     const app = await createApp({
-      'proof_flow.dag.extract': async (params) => {
-        const { fileUri: target } = params as { fileUri: string }
-        return [
-          {
-            op: 'merge',
-            path: 'files',
-            value: {
-              [target]: {
-                fileUri: target,
-                dag,
-                lastSyncedAt: 456
-              }
-            }
-          }
-        ]
-      },
       'proof_flow.editor.reveal': async (params) => {
         revealCalls.push(params as { fileUri: string; nodeId: string })
         return []
+      },
+      'proof_flow.diagnose': async (params) => {
+        diagnoseCalls.push(params as { fileUri: string; nodeId: string })
+        return [{ op: 'set', path: 'activeDiagnosis', value: diagnosis }]
       }
     })
 
-    await app.act('dag_sync', { fileUri }).done()
     await app.act('file_activate', { fileUri }).done()
-    await app.act('node_select', { nodeId: 'root' }).done()
+    await app.act('node_select', { nodeId: 'todo' }).done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.ui.selectedNodeId).toBe('root')
+    expect(state.data.selectedNodeId).toBe('todo')
     expect(revealCalls).toHaveLength(1)
-    expect(revealCalls[0]?.fileUri).toBe(fileUri)
-    expect(revealCalls[0]?.nodeId).toBe('root')
+    expect(diagnoseCalls).toHaveLength(1)
+    expect(state.data.activeDiagnosis?.nodeId).toBe('todo')
   })
 
-  it('panel.toggle and layout.set update ui fields', async () => {
+  it('panel_set and cursor_sync update root state directly', async () => {
     const app = await createApp({})
 
-    await app.act('panel_toggle').done()
-    await app.act('layout_set', { layout: 'leftRight' }).done()
+    await app.act('panel_set', { visible: false }).done()
+    await app.act('cursor_sync', { resolvedNodeId: 'root' }).done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.ui.panelVisible).toBe(false)
-    expect(state.data.ui.layout).toBe('leftRight')
+    expect(state.data.panelVisible).toBe(false)
+    expect(state.data.cursorNodeId).toBe('root')
   })
 
-  it('zoom.set clamps values and collapse.toggle flips boolean', async () => {
-    const app = await createApp({})
-
-    await app.act('zoom_set', { zoom: 10 }).done()
-    await app.act('collapse_toggle').done()
-
-    let state = app.getState<ProofFlowState>()
-    expect(state.data.ui.zoom).toBe(5)
-    expect(state.data.ui.collapseResolved).toBe(true)
-
-    await app.act('zoom_set', { zoom: 0.01 }).done()
-
-    state = app.getState<ProofFlowState>()
-    expect(state.data.ui.zoom).toBe(0.1)
-  })
-
-  it('attempt.record applies host-provided history and patterns patch', async () => {
-    const fileUri = 'file:///proof.lean'
+  it('refreshes sorry queue and breakage map via effects', async () => {
     const app = await createApp({
-      'proof_flow.attempt.record': async () => [
-        {
-          op: 'set',
-          path: 'history',
-          value: {
-            version: '0.2.0',
-            files: {
-              [fileUri]: {
-                fileUri,
-                nodes: {},
-                totalAttempts: 1,
-                updatedAt: 1
-              }
-            }
-          }
-        },
-        {
-          op: 'set',
-          path: 'patterns',
-          value: {
-            version: '0.3.0',
-            entries: {},
-            totalAttempts: 1,
-            updatedAt: 1
-          }
+      'proof_flow.sorry.analyze': async () => [{
+        op: 'set',
+        path: 'sorryQueue',
+        value: {
+          items: [{
+            nodeId: 'todo',
+            label: 'todo',
+            goalText: '⊢ True',
+            dependentCount: 0,
+            estimatedDifficulty: 0.2
+          }],
+          totalSorries: 1
         }
-      ]
+      }],
+      'proof_flow.breakage.analyze': async () => [{
+        op: 'set',
+        path: 'breakageMap',
+        value: {
+          edges: [{
+            changedNodeId: 'def:a',
+            brokenNodeId: 'thm:b',
+            errorCategory: 'TYPE_MISMATCH',
+            errorMessage: 'type mismatch'
+          }],
+          lastAnalyzedAt: 10
+        }
+      }]
     })
 
-    await app.act('attempt_record', {
-      fileUri,
-      nodeId: 'root',
-      tactic: 'simp',
-      tacticKey: 'simp',
-      result: 'error',
-      contextErrorCategory: 'TACTIC_FAILED',
-      errorMessage: 'simp failed',
-      durationMs: 10
-    }).done()
+    await app.act('file_activate', { fileUri: 'file:///proof.lean' }).done()
+    await app.act('sorry_queue_refresh').done()
+    await app.act('breakage_analyze').done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.history.files[fileUri]?.totalAttempts).toBe(1)
-    expect(state.data.patterns.totalAttempts).toBe(1)
-  })
-
-  it('history.clear and patterns.reset clear accumulated state', async () => {
-    const fileUri = 'file:///proof.lean'
-    const app = await createApp({
-      'proof_flow.attempt.record': async () => [
-        {
-          op: 'set',
-          path: 'history',
-          value: {
-            version: '0.2.0',
-            files: {
-              [fileUri]: {
-                fileUri,
-                nodes: {},
-                totalAttempts: 2,
-                updatedAt: 2
-              }
-            }
-          }
-        },
-        {
-          op: 'set',
-          path: 'patterns',
-          value: {
-            version: '0.3.0',
-            entries: {
-              key: {
-                key: 'OTHER:simp',
-                errorCategory: 'OTHER',
-                tacticKey: 'simp',
-                successCount: 0,
-                failureCount: 2,
-                score: 0,
-                lastUpdated: 2,
-                dagFingerprint: null,
-                dagClusterId: null,
-                goalSignature: null
-              }
-            },
-            totalAttempts: 2,
-            updatedAt: 2
-          }
-        }
-      ]
-    })
-
-    await app.act('attempt_record', {
-      fileUri,
-      nodeId: 'root',
-      tactic: 'simp',
-      tacticKey: 'simp',
-      result: 'error',
-      contextErrorCategory: 'OTHER',
-      errorMessage: 'failed',
-      durationMs: 20
-    }).done()
-
-    await app.act('history_clear').done()
-    await app.act('patterns_reset').done()
-
-    const state = app.getState<ProofFlowState>()
-    expect(state.data.history.files).toEqual({})
-    expect(state.data.patterns.entries).toEqual({})
-    expect(state.data.patterns.totalAttempts).toBe(0)
-    expect(state.data.patterns.updatedAt).toBeNull()
-  })
-
-  it('attempt.suggest applies host patch and suggestions.clear resets state', async () => {
-    const fileUri = 'file:///proof.lean'
-    const nodeId = 'root'
-    const app = await createApp({
-      'proof_flow.attempt.suggest': async () => [
-        {
-          op: 'set',
-          path: 'suggestions',
-          value: {
-            version: '0.4.0',
-            byNode: {
-              [nodeId]: [{
-                nodeId,
-                tacticKey: 'exact',
-                score: 0.8,
-                sampleSize: 5,
-                successRate: 0.8,
-                sourceCategory: 'TACTIC_FAILED',
-                generatedAt: 100
-              }]
-            },
-            updatedAt: 100
-          }
-        }
-      ]
-    })
-
-    await app.act('attempt_suggest', { fileUri, nodeId }).done()
-
-    let state = app.getState<ProofFlowState>()
-    expect(state.data.suggestions.version).toBe('0.4.0')
-    expect(state.data.suggestions.byNode[nodeId]?.[0]?.tacticKey).toBe('exact')
-
-    await app.act('suggestions_clear').done()
-    state = app.getState<ProofFlowState>()
-    expect(state.data.suggestions.byNode).toEqual({})
-    expect(state.data.suggestions.updatedAt).toBeNull()
-  })
-
-  it('attempt.apply routes through host effect and updates history/patterns', async () => {
-    const fileUri = 'file:///proof.lean'
-    const nodeId = 'root'
-    const applyCalls: Array<{ fileUri: string; nodeId: string; tacticKey: string }> = []
-
-    const app = await createApp({
-      'proof_flow.attempt.apply': async (params) => {
-        const payload = params as {
-          fileUri: string
-          nodeId: string
-          tacticKey: string
-        }
-        applyCalls.push(payload)
-
-        return [
-          {
-            op: 'set',
-            path: 'history',
-            value: {
-              version: '0.2.0',
-              files: {
-                [fileUri]: {
-                  fileUri,
-                  nodes: {
-                    [nodeId]: {
-                      nodeId,
-                      attempts: {},
-                      currentStreak: 0,
-                      totalAttempts: 1,
-                      lastAttemptAt: 200,
-                      lastSuccessAt: 200,
-                      lastFailureAt: null
-                    }
-                  },
-                  totalAttempts: 1,
-                  updatedAt: 200
-                }
-              }
-            }
-          },
-          {
-            op: 'set',
-            path: 'patterns',
-            value: {
-              version: '0.3.0',
-              entries: {},
-              totalAttempts: 1,
-              updatedAt: 200
-            }
-          }
-        ]
-      }
-    })
-
-    await app.act('attempt_apply', {
-      fileUri,
-      nodeId,
-      tactic: 'exact',
-      tacticKey: 'exact',
-      contextErrorCategory: 'TACTIC_FAILED',
-      errorMessage: null
-    }).done()
-
-    const state = app.getState<ProofFlowState>()
-    expect(applyCalls).toHaveLength(1)
-    expect(applyCalls[0]).toMatchObject({
-      fileUri,
-      nodeId,
-      tactic: 'exact',
-      tacticKey: 'exact',
-      contextErrorCategory: 'TACTIC_FAILED'
-    })
-    expect(state.data.history.files[fileUri]?.totalAttempts).toBe(1)
-    expect(state.data.patterns.totalAttempts).toBe(1)
+    expect(state.data.sorryQueue?.totalSorries).toBe(1)
+    expect(state.data.breakageMap?.edges).toHaveLength(1)
   })
 })

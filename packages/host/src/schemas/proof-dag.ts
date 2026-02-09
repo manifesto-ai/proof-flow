@@ -47,24 +47,33 @@ const NodeStatusSchema = z.object({
   errorCategory: ErrorCategorySchema.nullable()
 })
 
+const GoalSnapshotSchema = z.object({
+  before: z.string(),
+  after: z.string().nullable(),
+  tactic: z.string(),
+  appliedLemmas: z.array(z.string()),
+  subgoalsCreated: z.number().int().min(0)
+})
+
 export const ProofNodeSchema = z.object({
   id: z.string().min(1),
   kind: NodeKindSchema,
   label: z.string(),
   leanRange: RangeSchema,
-  goal: z.string().nullable(),
+  goalCurrent: z.string().nullable(),
+  goalSnapshots: z.array(GoalSnapshotSchema),
+  estimatedDistance: z.number().nullable(),
   status: NodeStatusSchema,
   children: z.array(z.string().min(1)),
   dependencies: z.array(z.string().min(1))
 })
 
-const DagMetricsSchema = z.object({
-  totalNodes: z.number().int().min(0),
-  resolvedCount: z.number().int().min(0),
-  errorCount: z.number().int().min(0),
-  sorryCount: z.number().int().min(0),
-  inProgressCount: z.number().int().min(0),
-  maxDepth: z.number().int().min(0)
+const ProofProgressSchema = z.object({
+  totalGoals: z.number().int().min(0),
+  resolvedGoals: z.number().int().min(0),
+  blockedGoals: z.number().int().min(0),
+  sorryGoals: z.number().int().min(0),
+  estimatedRemaining: z.number().int().min(0).nullable()
 })
 
 const areKnownNodeReferences = (
@@ -106,7 +115,7 @@ export const ProofDagSchema = z.object({
   rootIds: z.array(z.string().min(1)),
   nodes: z.record(z.string(), ProofNodeSchema),
   extractedAt: z.number().int().nonnegative(),
-  metrics: DagMetricsSchema.nullable()
+  progress: ProofProgressSchema.nullable()
 })
   .refine((dag) => dag.rootIds.every((id) => Object.prototype.hasOwnProperty.call(dag.nodes, id)), {
     message: 'all rootIds must exist in nodes'

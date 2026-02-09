@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('ProofFlow app config', () => {
-  it('keeps required root fields after file activation', async () => {
+  it('keeps required v2 root fields after file activation', async () => {
     const schema = await domainMelPromise
 
     const app = createProofFlowApp({
@@ -24,9 +24,10 @@ describe('ProofFlow app config', () => {
       effects: {
         'proof_flow.dag.extract': async () => [],
         'proof_flow.editor.reveal': async () => [],
-        'proof_flow.attempt.record': async () => [],
-        'proof_flow.attempt.suggest': async () => [],
-        'proof_flow.attempt.apply': async () => []
+        'proof_flow.editor.getCursor': async () => [],
+        'proof_flow.diagnose': async () => [],
+        'proof_flow.sorry.analyze': async () => [],
+        'proof_flow.breakage.analyze': async () => []
       }
     })
 
@@ -36,11 +37,11 @@ describe('ProofFlow app config', () => {
     await app.act('file_activate', { fileUri: 'file:///proof.lean' }).done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.appVersion).toBe('0.1.0')
+    expect(state.data.appVersion).toBe('2.0.0')
     expect(state.data.files).toEqual({})
-    expect(state.data.history.version).toBe('0.2.0')
-    expect(state.data.patterns.version).toBe('0.3.0')
-    expect(state.data.suggestions.version).toBe('0.4.0')
-    expect(state.data.ui.activeFileUri).toBe('file:///proof.lean')
+    expect(state.data.activeFileUri).toBe('file:///proof.lean')
+    expect(state.data.selectedNodeId).toBeNull()
+    expect(state.data.cursorNodeId).toBeNull()
+    expect(state.data.panelVisible).toBe(true)
   })
 })

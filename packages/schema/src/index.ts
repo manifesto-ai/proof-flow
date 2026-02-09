@@ -29,6 +29,14 @@ export type Range = {
   endCol: number
 }
 
+export type GoalSnapshot = {
+  before: string
+  after: string | null
+  tactic: string
+  appliedLemmas: string[]
+  subgoalsCreated: number
+}
+
 export type NodeStatus = {
   kind: StatusKind
   errorMessage: string | null
@@ -40,19 +48,20 @@ export type ProofNode = {
   kind: NodeKind
   label: string
   leanRange: Range
-  goal: string | null
+  goalCurrent: string | null
+  goalSnapshots: GoalSnapshot[]
+  estimatedDistance: number | null
   status: NodeStatus
   children: string[]
   dependencies: string[]
 }
 
-export type DagMetrics = {
-  totalNodes: number
-  resolvedCount: number
-  errorCount: number
-  sorryCount: number
-  inProgressCount: number
-  maxDepth: number
+export type ProofProgress = {
+  totalGoals: number
+  resolvedGoals: number
+  blockedGoals: number
+  sorryGoals: number
+  estimatedRemaining: number | null
 }
 
 export type ProofDAG = {
@@ -60,7 +69,7 @@ export type ProofDAG = {
   rootIds: string[]
   nodes: Record<string, ProofNode>
   extractedAt: number
-  metrics: DagMetrics | null
+  progress: ProofProgress | null
 }
 
 export type FileState = {
@@ -69,96 +78,50 @@ export type FileState = {
   lastSyncedAt: number | null
 }
 
-export type LayoutDirection = 'topDown' | 'leftRight'
-
-export type UiState = {
-  panelVisible: boolean
-  activeFileUri: string | null
-  selectedNodeId: string | null
-  cursorNodeId: string | null
-  layout: LayoutDirection
-  zoom: number
-  collapseResolved: boolean
-}
-
-export type AttemptResult = 'success' | 'error' | 'timeout' | 'placeholder'
-
-export type AttemptRecord = {
-  id: string
-  fileUri: string
+export type SorryItem = {
   nodeId: string
-  timestamp: number
-  tactic: string
-  tacticKey: string
-  result: AttemptResult
-  contextErrorCategory: ErrorCategory | null
-  errorMessage: string | null
-  durationMs: number | null
+  label: string
+  goalText: string
+  dependentCount: number
+  estimatedDifficulty: number
 }
 
-export type NodeHistory = {
+export type SorryQueue = {
+  items: SorryItem[]
+  totalSorries: number
+}
+
+export type Diagnosis = {
   nodeId: string
-  attempts: Record<string, AttemptRecord>
-  currentStreak: number
-  totalAttempts: number
-  lastAttemptAt: number | null
-  lastSuccessAt: number | null
-  lastFailureAt: number | null
-}
-
-export type FileHistory = {
-  fileUri: string
-  nodes: Record<string, NodeHistory>
-  totalAttempts: number
-  updatedAt: number | null
-}
-
-export type HistoryState = {
-  version: string
-  files: Record<string, FileHistory>
-}
-
-export type PatternEntry = {
-  key: string
   errorCategory: ErrorCategory
-  tacticKey: string
-  successCount: number
-  failureCount: number
-  score: number
-  lastUpdated: number
-  dagFingerprint: string | null
-  dagClusterId: string | null
-  goalSignature: string | null
+  rawMessage: string
+  expected: string | null
+  actual: string | null
+  mismatchPath: string | null
+  hint: string | null
+  suggestedTactic: string | null
 }
 
-export type PatternsState = {
-  version: string
-  entries: Record<string, PatternEntry>
-  totalAttempts: number
-  updatedAt: number | null
+export type BreakageEdge = {
+  changedNodeId: string
+  brokenNodeId: string
+  errorCategory: ErrorCategory
+  errorMessage: string | null
 }
 
-export type SuggestionEntry = {
-  nodeId: string
-  tacticKey: string
-  score: number
-  sampleSize: number
-  successRate: number
-  sourceCategory: ErrorCategory | null
-  generatedAt: number
-}
-
-export type SuggestionState = {
-  version: string
-  byNode: Record<string, SuggestionEntry[]>
-  updatedAt: number | null
+export type BreakageMap = {
+  edges: BreakageEdge[]
+  lastAnalyzedAt: number | null
 }
 
 export type ProofFlowState = {
   appVersion: string
   files: Record<string, FileState>
-  ui: UiState
-  history: HistoryState
-  patterns: PatternsState
-  suggestions: SuggestionState
+  activeFileUri: string | null
+  selectedNodeId: string | null
+  cursorNodeId: string | null
+  panelVisible: boolean
+  sorryQueue: SorryQueue | null
+  breakageMap: BreakageMap | null
+  activeDiagnosis: Diagnosis | null
 }

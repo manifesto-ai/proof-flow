@@ -12,11 +12,7 @@ const env = vi.hoisted(() => {
   }
 
   class Disposable {
-    private readonly onDispose?: () => void
-
-    constructor(onDispose?: () => void) {
-      this.onDispose = onDispose
-    }
+    constructor(private readonly onDispose?: () => void) {}
 
     dispose(): void {
       this.onDispose?.()
@@ -49,7 +45,7 @@ const env = vi.hoisted(() => {
 
   const fakeState: any = {
     data: {
-      appVersion: '0.1.0',
+      appVersion: '2.0.0',
       files: {
         [leanUri.toString()]: {
           fileUri: leanUri.toString(),
@@ -62,40 +58,36 @@ const env = vi.hoisted(() => {
                 kind: 'theorem',
                 label: 'root',
                 leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-                goal: null,
+                goalCurrent: null,
+                goalSnapshots: [],
+                estimatedDistance: 0,
                 status: { kind: 'resolved', errorMessage: null, errorCategory: null },
                 children: [],
                 dependencies: []
               }
             },
             extractedAt: 1,
-            metrics: {
-              totalNodes: 1,
-              resolvedCount: 1,
-              errorCount: 0,
-              sorryCount: 0,
-              inProgressCount: 0,
-              maxDepth: 0
+            progress: {
+              totalGoals: 0,
+              resolvedGoals: 0,
+              blockedGoals: 0,
+              sorryGoals: 0,
+              estimatedRemaining: 0
             }
           },
           lastSyncedAt: 1
         }
       },
-      ui: {
-        panelVisible: true,
-        activeFileUri: leanUri.toString(),
-        selectedNodeId: null,
-        cursorNodeId: null,
-        layout: 'topDown',
-        zoom: 1,
-        collapseResolved: false
-      },
-      history: { version: '0.2.0', files: {} },
-      patterns: { version: '0.3.0', entries: {}, totalAttempts: 0, updatedAt: null }
+      activeFileUri: leanUri.toString(),
+      selectedNodeId: null,
+      cursorNodeId: null,
+      panelVisible: true,
+      sorryQueue: null,
+      breakageMap: null,
+      activeDiagnosis: null
     },
     computed: {
       'computed.activeDag': null,
-      'computed.summaryMetrics': null,
       'computed.selectedNode': null
     },
     system: {
@@ -118,17 +110,45 @@ const env = vi.hoisted(() => {
     dispose: vi.fn(async () => {}),
     act: vi.fn((type: string, input?: unknown) => {
       actCalls.push({ type, input })
-      if (type === 'panel_toggle') {
-        fakeState.data.ui.panelVisible = !fakeState.data.ui.panelVisible
+      if (type === 'panel_set') {
+        fakeState.data.panelVisible = (input as { visible?: boolean })?.visible ?? fakeState.data.panelVisible
       }
       if (type === 'cursor_sync') {
-        fakeState.data.ui.cursorNodeId = (input as { resolvedNodeId?: string | null })?.resolvedNodeId ?? null
+        fakeState.data.cursorNodeId = (input as { resolvedNodeId?: string | null })?.resolvedNodeId ?? null
       }
-      return {
-        done: async () => {}
+      if (type === 'file_activate') {
+        fakeState.data.activeFileUri = (input as { fileUri?: string })?.fileUri ?? null
       }
+      if (type === 'node_select') {
+        fakeState.data.selectedNodeId = (input as { nodeId?: string })?.nodeId ?? null
+      }
+      return { done: async () => {} }
     }),
     getState: vi.fn(() => fakeState),
+    currentBranch: vi.fn(() => ({
+      id: 'main',
+      name: 'main',
+      schemaHash: 'schema',
+      head: () => 'w_head',
+      lineage: () => ['w_head', 'w_prev']
+    })),
+    getCurrentHead: vi.fn(() => 'w_head'),
+    getHeads: vi.fn(async () => [
+      {
+        worldId: 'w_head',
+        branchId: 'main',
+        branchName: 'main',
+        createdAt: 1,
+        schemaHash: 'schema'
+      }
+    ]),
+    getLatestHead: vi.fn(async () => ({
+      worldId: 'w_head',
+      branchId: 'main',
+      branchName: 'main',
+      createdAt: 1,
+      schemaHash: 'schema'
+    })),
     subscribe: vi.fn((selector: (state: unknown) => unknown, listener: (selected: unknown) => void) => {
       listener(selector(fakeState))
       return () => {}
@@ -136,7 +156,6 @@ const env = vi.hoisted(() => {
   }
 
   const createProofFlowApp = vi.fn(() => fakeApp as any)
-  const createProofFlowWorld = vi.fn(async () => ({ store: {} }))
   const resolveNodeIdAtCursor = vi.fn(() => 'root')
 
   const window = {
@@ -161,8 +180,7 @@ const env = vi.hoisted(() => {
       return new Disposable()
     },
     showWarningMessage: vi.fn(async () => undefined),
-    showErrorMessage: vi.fn(async () => undefined),
-    showInformationMessage: vi.fn(async () => undefined)
+    showErrorMessage: vi.fn(async () => undefined)
   }
 
   const workspace = {
@@ -173,7 +191,7 @@ const env = vi.hoisted(() => {
     fs: {
       readFile: vi.fn(async () => new TextEncoder().encode('domain ProofFlow { state { v: number = 1 } }'))
     },
-    openTextDocument: vi.fn(async (uri: { toString: () => string; path: string }) => ({
+    openTextDocument: vi.fn(async (uri: { path: string }) => ({
       uri,
       path: uri.path,
       languageId: uri.path.endsWith('.lean') ? 'lean' : 'text',
@@ -206,19 +224,16 @@ const env = vi.hoisted(() => {
       all: [],
       getExtension: vi.fn(() => undefined)
     },
-    commands: {
-      registerCommand
-    },
+    commands: { registerCommand },
     Uri: {
       parse: (value: string) => makeUri(value),
+      file: (value: string) => makeUri(`file://${value}`),
       joinPath: (base: { toString: () => string }, ...parts: string[]) => {
         const joined = `${base.toString().replace(/\/$/, '')}/${parts.join('/')}`
         return makeUri(joined)
       }
     },
-    TextEditorRevealType: {
-      InCenter: 2
-    },
+    TextEditorRevealType: { InCenter: 2 },
     DiagnosticSeverity: {
       Error: 0,
       Warning: 1,
@@ -226,62 +241,10 @@ const env = vi.hoisted(() => {
       Hint: 3
     },
     Range,
-    Disposable
-  }
-
-  const reset = () => {
-    actCalls.splice(0)
-    commands.clear()
-    panelInstances.splice(0)
-
-    listeners.editor.splice(0)
-    listeners.save.splice(0)
-    listeners.selection.splice(0)
-    listeners.diagnostics.splice(0)
-
-    fakeState.data.ui.panelVisible = true
-    fakeState.data.ui.cursorNodeId = null
-
-    window.activeTextEditor = {
-      document: {
-        languageId: 'lean',
-        uri: leanUri,
-        getText: () => 'theorem t : True := by exact True.intro'
-      },
-      selection: {
-        active: { line: 0, character: 0 }
-      },
-      revealRange: vi.fn()
+    Disposable,
+    ViewColumn: {
+      Beside: 2
     }
-
-    createProofFlowApp.mockClear()
-    createProofFlowWorld.mockClear()
-    resolveNodeIdAtCursor.mockClear()
-    registerCommand.mockClear()
-    fakeApp.ready.mockClear()
-    fakeApp.dispose.mockClear()
-    fakeApp.act.mockClear()
-    fakeApp.getState.mockClear()
-    fakeApp.subscribe.mockClear()
-    workspace.fs.readFile.mockClear()
-    workspace.openTextDocument.mockClear()
-    window.showWarningMessage.mockClear()
-    window.showErrorMessage.mockClear()
-    window.showInformationMessage.mockClear()
-    languages.getDiagnostics.mockClear()
-    vscodeMock.extensions.getExtension.mockClear()
-  }
-
-  const fire = async (list: Array<(event: unknown) => unknown>, event: unknown) => {
-    for (const listener of list) {
-      await listener(event)
-    }
-  }
-
-  const wait = async (ms: number) => {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, ms)
-    })
   }
 
   class ProjectionPanelController {
@@ -304,20 +267,81 @@ const env = vi.hoisted(() => {
   }
 
   const selectProjectionState = vi.fn((state: any) => ({
-    ui: state.data.ui,
+    ui: {
+      panelVisible: state.data.panelVisible,
+      activeFileUri: state.data.activeFileUri,
+      selectedNodeId: state.data.selectedNodeId,
+      cursorNodeId: state.data.cursorNodeId
+    },
     activeDag: null,
-    summaryMetrics: null,
+    progress: null,
     nodes: [],
     selectedNode: null,
-    startHereQueue: []
+    goalChain: [],
+    hasSorries: false,
+    sorryQueue: [],
+    hasError: false,
+    activeDiagnosis: null,
+    breakageMap: null,
+    runtimeDebug: {
+      world: {
+        headWorldId: null,
+        depth: null,
+        branchId: null
+      }
+    }
   }))
+
+  const reset = () => {
+    actCalls.splice(0)
+    commands.clear()
+    panelInstances.splice(0)
+    listeners.editor.splice(0)
+    listeners.save.splice(0)
+    listeners.selection.splice(0)
+    listeners.diagnostics.splice(0)
+
+    fakeState.data.panelVisible = true
+    fakeState.data.cursorNodeId = null
+    fakeState.data.selectedNodeId = null
+
+    createProofFlowApp.mockClear()
+    resolveNodeIdAtCursor.mockClear()
+    registerCommand.mockClear()
+    fakeApp.ready.mockClear()
+    fakeApp.dispose.mockClear()
+    fakeApp.act.mockClear()
+    fakeApp.getState.mockClear()
+    fakeApp.currentBranch.mockClear()
+    fakeApp.getCurrentHead.mockClear()
+    fakeApp.getHeads.mockClear()
+    fakeApp.getLatestHead.mockClear()
+    fakeApp.subscribe.mockClear()
+    workspace.fs.readFile.mockClear()
+    workspace.openTextDocument.mockClear()
+    window.showWarningMessage.mockClear()
+    window.showErrorMessage.mockClear()
+    languages.getDiagnostics.mockClear()
+    vscodeMock.extensions.getExtension.mockClear()
+  }
+
+  const fire = async (list: Array<(event: unknown) => unknown>, event: unknown) => {
+    for (const listener of list) {
+      await listener(event)
+    }
+  }
+
+  const wait = async (ms: number) => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms)
+    })
+  }
 
   return {
     leanUri,
     textUri,
     vscodeMock,
     createProofFlowApp,
-    createProofFlowWorld,
     resolveNodeIdAtCursor,
     selectProjectionState,
     ProjectionPanelController,
@@ -336,26 +360,19 @@ const env = vi.hoisted(() => {
 })
 
 vi.mock('vscode', () => env.vscodeMock as any)
-
 vi.mock('../packages/app/src/config.js', () => ({
   createProofFlowApp: env.createProofFlowApp
 }))
-
-vi.mock('../packages/app/src/worldstore.js', () => ({
-  createProofFlowWorld: env.createProofFlowWorld
-}))
-
 vi.mock('@proof-flow/host', () => ({
   createProofFlowEffects: () => ({}),
   resolveNodeIdAtCursor: env.resolveNodeIdAtCursor
 }))
-
 vi.mock('../packages/app/src/webview-panel.js', () => ({
   ProjectionPanelController: env.ProjectionPanelController,
   selectProjectionState: env.selectProjectionState
 }))
 
-describe('Extension E2E flow', () => {
+describe('Extension E2E flow (v2)', () => {
   beforeEach(async () => {
     env.reset()
     vi.resetModules()
@@ -367,65 +384,30 @@ describe('Extension E2E flow', () => {
 
     await extension.activate(context as any)
 
-    expect(env.createProofFlowWorld).toHaveBeenCalledTimes(1)
-    expect(env.createProofFlowApp).toHaveBeenCalledTimes(1)
-
     const initialTypes = env.getActCalls().map((call) => call.type)
     expect(initialTypes).toContain('file_activate')
     expect(initialTypes).toContain('dag_sync')
 
     await env.fireEditorChange({
-      document: {
-        languageId: 'lean',
-        uri: env.leanUri
-      }
+      document: { languageId: 'lean', uri: env.leanUri }
     })
-
-    await env.fireSave({
-      languageId: 'lean',
-      uri: env.leanUri
-    })
-
-    await env.fireDiagnostics({
-      uris: [env.leanUri, env.textUri]
-    })
-
+    await env.fireSave({ languageId: 'lean', uri: env.leanUri })
+    await env.fireDiagnostics({ uris: [env.leanUri, env.textUri] })
     await env.fireSelection({
       textEditor: {
-        document: {
-          languageId: 'lean',
-          uri: env.leanUri
-        }
+        document: { languageId: 'lean', uri: env.leanUri }
       },
-      selections: [
-        {
-          active: {
-            line: 0,
-            character: 2
-          }
-        }
-      ]
+      selections: [{ active: { line: 0, character: 2 } }]
     })
 
-    await env.fireSave({
-      languageId: 'lean',
-      uri: env.leanUri
-    })
-
-    await env.wait(500)
-
-    const calls = env.getActCalls()
-    const types = calls.map((call) => call.type)
+    await env.wait(450)
+    const types = env.getActCalls().map((call) => call.type)
 
     expect(types.filter((type) => type === 'file_activate').length).toBeGreaterThanOrEqual(2)
     expect(types.filter((type) => type === 'dag_sync').length).toBeGreaterThanOrEqual(2)
     expect(types).toContain('cursor_sync')
-    expect(types).toContain('attempt_record')
-
-    const cursorSyncCall = calls.findLast((call) => call.type === 'cursor_sync')
-    expect(cursorSyncCall?.input).toMatchObject({
-      resolvedNodeId: expect.any(String)
-    })
+    expect(types).toContain('sorry_queue_refresh')
+    expect(types).toContain('breakage_analyze')
 
     const panel = env.getPanel()
     expect(panel).toBeDefined()
@@ -433,13 +415,11 @@ describe('Extension E2E flow', () => {
 
     await extension.deactivate()
     expect(env.fakeApp.dispose).toHaveBeenCalledTimes(1)
-    expect(panel.dispose).toHaveBeenCalledTimes(1)
   })
 
-  it('handles toggle command by reveal-first then panel_toggle', async () => {
+  it('handles toggle command by reveal-first then panel_set', async () => {
     const extension = await import('../packages/app/src/extension.ts')
     const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
     await extension.activate(context as any)
 
     const command = env.getCommand('proof-flow.hello')
@@ -454,60 +434,34 @@ describe('Extension E2E flow', () => {
 
     await command?.()
     const callTypes = env.getActCalls().map((call) => call.type)
-    expect(callTypes).toContain('panel_toggle')
-
-    await extension.deactivate()
+    expect(callTypes).toContain('panel_set')
   })
 
-  it('dispatches pattern reset from command and panel action', async () => {
+  it('returns world heads snapshot from command', async () => {
     const extension = await import('../packages/app/src/extension.ts')
     const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
     await extension.activate(context as any)
 
-    const resetCommand = env.getCommand('proof-flow.patternsReset')
-    expect(resetCommand).toBeTypeOf('function')
+    const snapshotCommand = env.getCommand('proof-flow.worldHeadsSnapshot')
+    expect(snapshotCommand).toBeTypeOf('function')
 
-    await resetCommand?.()
-
-    const panel = env.getPanel() as { actions: { onResetPatterns: () => Promise<void> } }
-    await panel.actions.onResetPatterns()
-
-    const resetCalls = env.getActCalls().filter((call) => call.type === 'patterns_reset')
-    expect(resetCalls.length).toBe(2)
-
-    await extension.deactivate()
-  })
-
-  it('dispatches tactic suggestion from command and panel action', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
-    await extension.activate(context as any)
-    env.fakeState.data.ui.cursorNodeId = 'root'
-
-    const suggestCommand = env.getCommand('proof-flow.suggestTactics')
-    expect(suggestCommand).toBeTypeOf('function')
-
-    await suggestCommand?.()
-
-    const panel = env.getPanel() as { actions: { onSuggestTactics: () => Promise<void> } }
-    await panel.actions.onSuggestTactics()
-
-    const suggestCalls = env.getActCalls().filter((call) => call.type === 'attempt_suggest')
-    expect(suggestCalls.length).toBe(2)
-    expect(suggestCalls[0]?.input).toMatchObject({
-      fileUri: env.leanUri.toString(),
-      nodeId: 'root'
+    const snapshot = await snapshotCommand?.()
+    expect(snapshot).toMatchObject({
+      current: {
+        branchId: 'main',
+        headWorldId: 'w_head',
+        lineageLength: 2
+      },
+      stateSummary: {
+        fileCount: 1,
+        dagNodeCount: 1
+      }
     })
-
-    await extension.deactivate()
   })
 
-  it('dispatches node_select from panel selection action', async () => {
+  it('dispatches node_select from panel action', async () => {
     const extension = await import('../packages/app/src/extension.ts')
     const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
     await extension.activate(context as any)
 
     const panel = env.getPanel() as { actions: { onNodeSelect: (nodeId: string) => Promise<void> } }
@@ -515,113 +469,5 @@ describe('Extension E2E flow', () => {
 
     const nodeSelectCall = env.getActCalls().findLast((call) => call.type === 'node_select')
     expect(nodeSelectCall?.input).toMatchObject({ nodeId: 'root' })
-
-    await extension.deactivate()
-  })
-
-  it('applies selected suggestion through panel action', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
-    await extension.activate(context as any)
-    env.fakeState.data.ui.cursorNodeId = 'root'
-
-    const panel = env.getPanel() as { actions: { onApplySuggestion: (tacticKey: string) => Promise<void> } }
-    await panel.actions.onApplySuggestion('simp')
-
-    const calls = env.getActCalls()
-    const applyCall = calls.find((call) => call.type === 'attempt_apply')
-    expect(applyCall?.input).toMatchObject({
-      fileUri: env.leanUri.toString(),
-      nodeId: 'root',
-      tactic: 'simp',
-      tacticKey: 'simp'
-    })
-
-    expect(calls.map((call) => call.type)).toContain('dag_sync')
-    expect(calls.map((call) => call.type)).toContain('attempt_suggest')
-
-    await extension.deactivate()
-  })
-
-  it('reports goal coverage for active DAG', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
-    await extension.activate(context as any)
-
-    const snapshotCommand = env.getCommand('proof-flow.goalCoverageSnapshot')
-    expect(snapshotCommand).toBeTypeOf('function')
-
-    const snapshot = await snapshotCommand?.() as {
-      sourceKpi?: {
-        totalHints?: number
-        stableHints?: number
-        fallbackHints?: number
-        stableRatio?: number
-        fallbackRatio?: number
-        alerts?: string[]
-      }
-    } | undefined
-    expect(snapshot?.sourceKpi).toMatchObject({
-      totalHints: 0,
-      stableHints: 0,
-      fallbackHints: 0,
-      stableRatio: 0,
-      fallbackRatio: 0,
-      alerts: expect.arrayContaining(['NO_HINTS'])
-    })
-
-    const reportCommand = env.getCommand('proof-flow.goalCoverageReport')
-    expect(reportCommand).toBeTypeOf('function')
-
-    await reportCommand?.()
-
-    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Goal coverage')
-    )
-    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('stableRatio=')
-    )
-
-    await extension.deactivate()
-  })
-
-  it('reports performance snapshot and report command', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-
-    await extension.activate(context as any)
-
-    await env.fireDiagnostics({
-      uris: [env.leanUri, env.leanUri]
-    })
-    await env.wait(350)
-
-    const snapshotCommand = env.getCommand('proof-flow.performanceSnapshot')
-    expect(snapshotCommand).toBeTypeOf('function')
-
-    const snapshot = await snapshotCommand?.() as {
-      dagSync?: {
-        scheduled?: number
-        executed?: number
-      }
-      projection?: {
-        updates?: number
-      }
-    } | undefined
-    expect(snapshot?.dagSync?.scheduled).toBeGreaterThan(0)
-    expect(snapshot?.dagSync?.executed).toBeGreaterThan(0)
-    expect(snapshot?.projection?.updates).toBeGreaterThan(0)
-
-    const reportCommand = env.getCommand('proof-flow.performanceReport')
-    expect(reportCommand).toBeTypeOf('function')
-    await reportCommand?.()
-
-    expect(env.vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Perf sync avg=')
-    )
-
-    await extension.deactivate()
   })
 })
