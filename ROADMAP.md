@@ -1,169 +1,90 @@
-# ProofFlow Roadmap
+# ProofFlow Roadmap (v2 Hard-Cut)
 
-## Status Snapshot (2026-02-08)
-- ✅ Workspace scaffold (pnpm + ESM + TS configs)
-- ✅ MEL domain (compiler-compatible) authored
-- ✅ Docs updated for underscore action/effect names
-- ✅ Core intent tests written (MEL injected)
-- ✅ Tests re-run on Manifesto latest (`@manifesto-ai/*` 2.2.x)
-- ✅ App wiring baseline (effects-first AppConfig + extension lifecycle)
-- ✅ Custom World adapter baseline (persisted MemoryWorldStore)
-- ✅ Host effect implementation (`dag.extract` parser + validation pipeline)
-- ✅ Lineage/replay invariants test baseline
-- ✅ Projection-only UI enhanced (WebView projection + search/filter/sort + virtual list)
-- ✅ VS Code extension E2E flow test baseline (event → app.act / command toggle)
-- ✅ App initialData hardening (root state fields retained after runtime actions)
-- ✅ WorldStore replay hardening (dot-safe URI key restore for `data.files`)
-- ✅ VS Code smoke runner baseline (`pnpm test:smoke:vscode`)
-- ✅ Minimal CI workflow baseline (`test`, `typecheck`, `build`)
-- ✅ v0.2 attempt domain contract (`attempt_record`, `history_clear`, `patterns_reset`)
-- ✅ Host attempt aggregation effect (`proof_flow.attempt.record`) + unit tests
-- ✅ Extension attempt trigger baseline (save/diagnostics → deduped `attempt_record`)
-- ✅ Projection read model v0.2 (`attemptOverview`, `selectedNodeHistory`, `patternInsights`)
-- ✅ Attempt world replay/restore verification (`tests/attempt-replay.spec.ts`)
-- ✅ Projection read model v0.3 (`nodeHeatmap`, qualified pattern ranking, dashboard)
-- ✅ Pattern reset UX wiring (WebView button + command palette `proof-flow.patternsReset`)
-- ✅ WorldStore dynamic-key replay hardening (`history.files.*`, `patterns.entries.*`)
-- ✅ v0.4 prep 문서화 (`docs/V0.4-PREP.md`)
-- ✅ v0.4 suggestion domain contract (`attempt_suggest`, `suggestions_clear`, `SuggestionState`)
-- ✅ Host suggestion effect baseline (`proof_flow.attempt.suggest`) + deterministic ranking tests
-- ✅ Suggestion projection/extension wiring (`selectedNodeSuggestions`, `proof-flow.suggestTactics`)
-- ✅ v0.4.1 stable goal source integration (`$/lean/plainGoal`, `$/lean/plainTermGoal`) + source stats
-- ✅ v0.4.2 closed-loop baseline (`attempt_apply` effect + panel apply + post-apply re-suggest)
-- ✅ v0.4.2 Suggestion closed loop integration test (`tests/suggestion-closed-loop.spec.ts`)
-- ✅ v0.4.3 Start-Here triage (priority queue + panel + tests)
-- ✅ v0.4.1 P0 recovery batch 완료 (schema decouple + readiness gating + probe diagnostics + spike guardrail)
-- ✅ Goal-fidelity KPI/alert baseline (`stableHintRatio`, fallback dominance alerts)
-- ✅ Goal-fidelity 안정화 2차 (stable request retry + safe command probe + stable-only fixture guard)
-- ✅ v0.5 scoring v1 (category/sample/recency/node-local ranking)
-- ✅ v0.5 explainability v1 (projection reason string + panel 노출)
-- ✅ `G0` baseline 지표/러너/리포트 추가 (`reports/g0-baseline-report.json`)
-- ✅ `G1` 실측 러너/리포트 추가 (`reports/g1-delta-report.json`, stable source on/off A/B)
-- ✅ attempt 데이터 품질 계측 + 저품질 `tacticKey` 패턴 반영 필터(History 유지, Pattern 제외)
-- ✅ suggestion TTL/상한 정책 + replay 복원 무결성 테스트 추가
-- ✅ Mathlib stable-source `nullish` 재현/분류 및 완화안 반영(샘플별 snapshot race 제거 + nullish 안정화 대기 윈도우)
-- ✅ v0.6 sync 최적화 1차: 파일 단위 `dag_sync` debounce/중복 제거 큐 도입
-- ✅ v0.6 성능 계측 1차: `performanceSnapshot`/`performanceReport` 커맨드 + E2E 검증
-- ✅ CI suggest-loop 통합 게이트 추가 (`pnpm test:ci:suggest-loop`)
-- ⚠️ 최신 spike에서 coverage `100.0%`로 개선됐지만 Mathlib 샘플은 stable hint `0` 케이스가 지속됨(현재 declaration fallback로 보완)
-- ✅ stable-first + fallback 구조에서 fallback-only 루프도 동작 가능함을 확인 (블로커 아님)
+## Snapshot (2026-02-09)
+- 현재 기준은 `v2 hard-cut`이며, v0.x attempt/pattern/suggestion/history 계층은 제거됨.
+- 제품 초점은 `증명의 GPS`: 현재 위치(Proof Map) + 다음 작업(Goal Diff/Diagnosis/Sorry Queue) 제공.
+- Manifesto 연동은 `projection-only` 원칙 유지(도메인 정책은 MEL/Host에서만 처리).
 
-## Priority Queue
-1. Monitor: Goal-fidelity 품질(특히 Mathlib 샘플 stable hint `0` 재발 여부)
-2. Monitor: Manifesto core 연동 리스크(`core#108`, `core#109`)
+## Current Scope
+### In Scope
+- Flattened MEL state/action contract
+  - state: `files`, `activeFileUri`, `selectedNodeId`, `cursorNodeId`, `panelVisible`, `sorryQueue`, `breakageMap`, `activeDiagnosis`
+  - action: `file_activate`, `node_select`, `cursor_sync`, `panel_set`, `dag_sync`, `sorry_queue_refresh`, `breakage_analyze`, `diagnose`, `diagnosis_dismiss`
+- Host effects (core IO only)
+  - `proof_flow.dag.extract`
+  - `proof_flow.editor.reveal`
+  - `proof_flow.editor.getCursor`
+  - `proof_flow.diagnose`
+  - `proof_flow.sorry.analyze`
+  - `proof_flow.breakage.analyze`
+- Webview UI
+  - ReactFlow 기반 Proof Map
+  - Progress/Goal Diff/Diagnosis/Sorry Queue 중심 구성
+  - Extension 메시지 계약 최소화(`nodeClick`, `togglePanel` -> `stateUpdate`)
 
-## Checkpoints
+### Out of Scope (Removed)
+- `attempt_record`, `attempt_apply`, `attempt_suggest`
+- `history`, `patterns`, `suggestions` 상태/리셋 커맨드
+- attempt 기반 통계 루프(`g0/g1/suggestion-loop`, replay metrics 중심 실험)
+- WorldStore 전용 커스텀 계층
 
-### 0. Foundation
-- [x] pnpm workspace + ESM + TS build pipeline
-- [x] Package scaffold (`packages/schema`, `packages/host`, `packages/app`)
-- [x] ESLint baseline (`@antfu/eslint-config`)
+## Completed (v2.0)
+- [x] MEL 도메인 하드컷(중첩 `ui` 제거, 루트 state 평탄화)
+- [x] Schema 타입 하드컷(v1/v0.x 타입 제거)
+- [x] Host effect registry 정리(attempt 계열 제거)
+- [x] DAG schema/parser 정리(`metrics`, legacy `goal` 제거; `goalCurrent + goalSnapshots + progress` 고정)
+- [x] Extension/Panel 계약 단순화
+- [x] Webview 구성 정리(핵심 패널 중심)
+- [x] 테스트 스위트 v2 기준 재작성
+- [x] 품질 게이트 통과
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm test:smoke:vscode`
+- [x] 리포트/로컬 산출물 ignore 정책 정리(`.gitignore` + reports untrack)
 
-### 1. Domain (MEL)
-- [x] `domain.mel` v0.1 (compiler-compatible: underscore names)
-- [x] Update docs to match MEL grammar
-- [x] Run `pnpm test` to validate domain behaviors
+## Next Milestones
+### v2.1 Proof Workflow Validation (P0)
+- [ ] 실제 Lean/Mathlib 증명 시나리오 3종 확정 및 회귀 테스트화
+  - 단순 정리
+  - 중간 난이도(induction/cases)
+  - Mathlib import 의존 정리
+- [ ] `dag_sync -> panel stateUpdate` 반응성 계측(저장/진단 이벤트 기준)
+- [ ] Goal fidelity 리그레션 가드 추가
+  - `goalCurrent` null 비율
+  - Mathlib 샘플에서 stable source/ fallback 점유율 추적
+- [ ] `panel_set`/selection 동기화 E2E 강화(패널 open/close 및 reveal 동작)
 
-### 2. App Skeleton (Manifesto v2.2+)
-- [x] AppConfig wiring (MEL text injection + `effects` map)
-- [x] Stable initialData contract for runtime bootstrap
-- [x] Custom World adapter (optional, world-owned persistence)
-- [x] Actor/Authority policy (single-actor auto-approve)
-- [x] VS Code lifecycle wiring (`activate`/`ready`/`app.act`/`deactivate`)
+### v2.2 UX Refinement (P1)
+- [ ] 패널 정보 밀도 축소
+  - 기본 화면: Progress + Proof Map
+  - 조건부: Goal Diff(선택 시), Diagnosis(에러 선택 시), Sorry Queue(sorry 존재 시)
+- [ ] 스크롤/레이아웃 안정화(긴 증명 파일에서 panel 사용성 보장)
+- [ ] Analyze/Debug 노출 전략 분리(기본 숨김 + 개발 모드 토글)
 
-### 3. Host Effects (IO Boundary)
-- [x] `proof_flow.dag.extract` (Lean diagnostics + DAG parse + Zod validation)
-- [x] `proof_flow.editor.reveal` baseline (range reveal via snapshot node lookup)
-- [x] `proof_flow.editor.getCursor` baseline (cursor -> nodeId patch)
+### v2.3 Proof Intelligence (P1)
+- [ ] GoalSnapshot 품질 향상
+  - tactic 전후 diff 신뢰도 개선
+  - applied lemma 수집 정확도 개선
+- [ ] Diagnosis 규칙 개선
+  - `TYPE_MISMATCH`, `UNSOLVED_GOALS` 메시지 구조화 품질 향상
+- [ ] BreakageMap 신뢰도 개선
+  - dependency edge 기준 false-positive 감소
 
-### 4. Tests
-- [x] Core intent flow tests (dag_sync, file_activate, node_select, ui toggles)
-- [x] Effect handler tests (host → patches)
-- [x] World lineage/replay tests (determinism + storage integrity)
-- [x] VS Code extension E2E flow tests (activate/events/command/deactivate)
-- [x] App config regression test (root state preservation)
-- [x] WorldStore regression test (URI dotted path replay integrity)
+### v2.4 Ops / Governance (P2)
+- [ ] CI 게이트 재정렬
+  - 코어 파이프라인 중심 스위트 고정
+  - 제거된 v0.x 시나리오 관련 스크립트/문서 정리
+- [ ] Manifesto core 연동 리스크 모니터링 지속
+  - `core#108`, `core#109` 추적
+  - 에스컬레이션 기준 문서화
 
-### 5. Projection-Only UI (최후순위)
-- [x] Read-only projection from `Snapshot.data` and `Snapshot.computed`
-- [x] DAG view + summary metrics (no domain logic in UI)
-- [x] Node search / status filter / sort controls
-- [x] Virtualized list rendering for large DAGs
+## Active Risks
+1. Mathlib 환경에서 stable goal source 가용성 변동.
+2. Lean diagnostics 타이밍에 따른 panel 반응 지연/누락 가능성.
+3. GoalSnapshot 데이터 품질이 낮으면 UX 가치가 급감할 수 있음.
 
-### 6. DevOps
-- [x] CI baseline (`pnpm test`, `pnpm typecheck`, `pnpm build`)
-- [x] VS Code smoke command for manual/runtime validation (`pnpm test:smoke:vscode`)
-
-### 7. v0.2 Attempt/Pattern Skeleton
-- [x] MEL action contract (`attempt_record`) and reset actions (`history_clear`, `patterns_reset`)
-- [x] Typed schema for `AttemptRecord`, `HistoryState`, `PatternEntry`
-- [x] Host effect `proof_flow.attempt.record` with atomic `history`/`patterns` update
-- [x] Host/domain test coverage for attempt accumulation + streak/score update
-- [x] Extension trigger wiring baseline (save/diagnostics 후 active node 상태를 attempt로 기록, fingerprint dedupe)
-- [x] Projection read model: node attempt summary / pattern insight selector
-- [x] E2E scenario: attempt 생성 후 world replay/복원 검증
-
-### 8. v0.3 Projection/Replay Hardening
-- [x] Projection 모델 확장: `attemptCount/heatLevel`, `nodeHeatmap`, dashboard 집계
-- [x] Qualified pattern 기준(sample >= 3) + selected category 우선 인사이트 노출
-- [x] WebView resetPatterns 메시지 처리 + extension 액션 연결
-- [x] Command palette reset 경로 추가 (`proof-flow.patternsReset`)
-- [x] Extension E2E: reset command/panel action -> `patterns_reset` 디스패치 검증
-- [x] WorldStore 회귀 테스트: 점(`.`) 포함 dynamic key 경로(`history`, `patterns`) 복원 무결성 검증
-
-### 9. v0.4 Core-First Suggestion Loop (Baseline)
-- [x] v0.4 실행 준비 문서 작성 (`docs/V0.4-PREP.md`)
-- [x] MEL 계약 추가: `attempt_suggest` / `suggestions_clear` + `SuggestionState`
-- [x] Host effect 추가: `proof_flow.attempt.suggest` (패턴/히스토리 기반 deterministic ranking)
-- [x] Projection 확장: selected node 추천 tactic 목록 + 근거(score/sample/category)
-- [x] Extension 트리거: command palette `proof-flow.suggestTactics` + panel action 연결
-- [x] 테스트 우선 구현: domain/host/projection/e2e 각각 최소 1개 회귀 시나리오
-
-### 10. v0.4.1 Goal Fidelity (P0)
-- [x] `LeanContext.goals` 힌트 계약 추가 + range 기반 node goal 매핑 파서 반영
-- [x] host 회귀 테스트 추가: goal-range 매핑/루트 fallback 검증
-- [x] `dag.extract` 입력 소스 확장 1차: `loadGoals` adapter hook + diagnostics/hover/command probe 수집 경로 추가
-- [x] `proof-flow.goalCoverageReport` 커맨드 추가(활성 DAG goal 채움률 즉시 측정)
-- [x] command probe 2차 강화: Lean goal command 동적 탐색 + 다중 호출 시그니처 + source stats 집계
-- [x] extension API probe 추가: `leanprover.lean4` export method 탐색 + source stats 집계
-- [x] `dag.extract` 입력 소스 확장 2차: Lean goal source(안정 API: `$/lean/plainGoal`, `$/lean/plainTermGoal`) 직접 연동
-- [x] 품질 스파이크: 실제 Lean/Mathlib 샘플에서 `goal != null` 비율 측정
-- [x] 리포트: 정확도/누락 케이스/실패 패턴 문서화 (`docs/GOAL-FIDELITY-SPIKE.md`)
-- [x] P0 복구 1: extension schema 로딩 경로를 `context.extensionUri` 기준으로 전환 (workspace root 결합 제거)
-- [x] P0 복구 2: Lean 준비 상태 게이팅(ready/sync 안정화) 후 goal snapshot 수집
-- [x] P0 복구 3: goal source probe 실패 원인/코드 로깅 및 snapshot에 원인 필드 추가
-- [x] P0 복구 4: spike CI 가드레일(최소 1 fixture에서 `withGoal > 0`) 추가
-- [x] P0 후속 1: stable source(`$/lean/plainGoal`) 성공률 지표화 및 fallback 의존도 경보
-- [x] P0 후속 2: stable request 재시도 전략 추가(초기 transport race 완화)
-- [x] P0 후속 3: command probe를 known-safe 시그니처로 축소
-- [x] P0 후속 4: stable-source 전용 fixture(`StableOnly.lean`) + CI gate 추가
-
-### 11. v0.4.2 Suggestion Closed Loop (P0)
-- [x] 추천 항목 선택 UX: panel에서 tactic 선택 이벤트 추가
-- [x] host/app 연결: suggest 선택 -> apply effect -> `attempt_record` 자동 반영
-- [x] 실패/성공 결과를 history/patterns/suggestions에 일관 반영
-- [x] 통합 E2E: suggest -> apply -> record -> resuggest 시나리오 검증
-
-### 12. v0.4.3 Start-Here Triage (P0)
-- [x] unresolved/sorry 노드 우선순위 산식 정의
-- [x] projection에 `startHereQueue` 추가 및 panel 노출
-- [x] 선택한 큐 항목의 editor reveal/cursor sync 일관성 검증
-- [x] 긴 증명 파일 기준 유효성 시나리오 테스트 추가
-
-### 13. v0.5 Recommendation Quality + State Hygiene (P1)
-- [x] 추천 스코어링 고도화: errorCategory 일치, sample, 최근성, node-local 이력 반영
-- [x] recommendation explainability: 추천 근거 문자열/메타데이터 노출
-- [x] `G0` baseline 지표 정의: goal text 없이도 추천 루프가 유의미한지 측정 지표 확정
-- [x] `G0` baseline 러너/리포트 추가: fallback-only 조건에서 pattern DB 효용 측정
-- [x] `G1` delta 지표 정의: stable goal source 포함 시 `G0` 대비 개선폭 측정
-- [x] attempt 데이터 품질 계측: tacticKey 추출 정확도/누락률 수집 + 저품질 입력 필터링 기준
-- [x] suggestion TTL/상한 정책 추가(노드당 개수 제한, stale 정리)
-- [x] world replay 무결성 테스트(정리 정책 적용 후 복원 일관성)
-- [x] `G1` 실측 러너/리포트 추가: stable source on/off 조건에서 `G0` 대비 lift 계산
-- [x] Mathlib sample 안정화: stable source `nullish` 재현/원인 분류/완화안 검증
-
-### 14. v0.6 Performance / CI Hardening (P2)
-- [x] 대형 증명 파일에서 incremental sync/debounce 최적화
-- [x] 성능 회귀 측정 지표(동기화 지연, projection 렌더 시간) 추가
-- [x] CI에 통합 시나리오 최소 1개 추가(suggest loop)
-- [ ] Manifesto core 연동 리스크 모니터링(`core#108`, `core#109`) 및 에스컬레이션 기준 유지
+## Immediate Queue (다음 작업 순서)
+1. v2.1 시나리오 3종 회귀 테스트 추가.
+2. 패널 조건부 렌더 규칙을 강제하는 UI 테스트 추가.
+3. Goal fidelity 지표를 리포트 JSON 대신 테스트 assertion으로 내재화.

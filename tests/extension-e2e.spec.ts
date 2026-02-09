@@ -105,6 +105,110 @@ const env = vi.hoisted(() => {
     }
   }
 
+  const fakeWorlds: Record<string, unknown> = {
+    w_prev: { worldId: 'w_prev', createdAt: 1 },
+    w_head: { worldId: 'w_head', createdAt: 2 }
+  }
+
+  const fakeSnapshots: Record<string, unknown> = {
+    w_prev: {
+      data: {
+        files: {
+          [leanUri.toString()]: {
+            fileUri: leanUri.toString(),
+            dag: {
+              fileUri: leanUri.toString(),
+              rootIds: ['root'],
+              extractedAt: 1,
+              nodes: {
+                root: {
+                  id: 'root',
+                  kind: 'theorem',
+                  label: 'root',
+                  leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
+                  goalCurrent: null,
+                  goalSnapshots: [],
+                  estimatedDistance: 0,
+                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
+                  children: ['n1'],
+                  dependencies: []
+                },
+                n1: {
+                  id: 'n1',
+                  kind: 'theorem',
+                  label: 'n1',
+                  leanRange: { startLine: 2, startCol: 0, endLine: 2, endCol: 10 },
+                  goalCurrent: 'goal-before',
+                  goalSnapshots: [],
+                  estimatedDistance: 1,
+                  status: { kind: 'sorry', errorMessage: 'sorry', errorCategory: 'OTHER' },
+                  children: [],
+                  dependencies: ['root']
+                }
+              },
+              progress: null
+            },
+            lastSyncedAt: 1
+          }
+        }
+      }
+    },
+    w_head: {
+      data: {
+        files: {
+          [leanUri.toString()]: {
+            fileUri: leanUri.toString(),
+            dag: {
+              fileUri: leanUri.toString(),
+              rootIds: ['root'],
+              extractedAt: 2,
+              nodes: {
+                root: {
+                  id: 'root',
+                  kind: 'theorem',
+                  label: 'root',
+                  leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
+                  goalCurrent: null,
+                  goalSnapshots: [],
+                  estimatedDistance: 0,
+                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
+                  children: ['n1', 'n2'],
+                  dependencies: []
+                },
+                n1: {
+                  id: 'n1',
+                  kind: 'theorem',
+                  label: 'n1',
+                  leanRange: { startLine: 2, startCol: 0, endLine: 2, endCol: 10 },
+                  goalCurrent: 'goal-after',
+                  goalSnapshots: [],
+                  estimatedDistance: 0,
+                  status: { kind: 'resolved', errorMessage: null, errorCategory: null },
+                  children: [],
+                  dependencies: ['root']
+                },
+                n2: {
+                  id: 'n2',
+                  kind: 'have',
+                  label: 'n2',
+                  leanRange: { startLine: 4, startCol: 0, endLine: 4, endCol: 10 },
+                  goalCurrent: 'new-goal',
+                  goalSnapshots: [],
+                  estimatedDistance: 1,
+                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
+                  children: [],
+                  dependencies: ['root']
+                }
+              },
+              progress: null
+            },
+            lastSyncedAt: 2
+          }
+        }
+      }
+    }
+  }
+
   const fakeApp = {
     ready: vi.fn(async () => {}),
     dispose: vi.fn(async () => {}),
@@ -133,6 +237,8 @@ const env = vi.hoisted(() => {
       lineage: () => ['w_head', 'w_prev']
     })),
     getCurrentHead: vi.fn(() => 'w_head'),
+    getWorld: vi.fn(async (worldId: string) => fakeWorlds[worldId] ?? null),
+    getSnapshot: vi.fn(async (worldId: string) => fakeSnapshots[worldId] ?? null),
     getHeads: vi.fn(async () => [
       {
         worldId: 'w_head',
@@ -314,6 +420,8 @@ const env = vi.hoisted(() => {
     fakeApp.getState.mockClear()
     fakeApp.currentBranch.mockClear()
     fakeApp.getCurrentHead.mockClear()
+    fakeApp.getWorld.mockClear()
+    fakeApp.getSnapshot.mockClear()
     fakeApp.getHeads.mockClear()
     fakeApp.getLatestHead.mockClear()
     fakeApp.subscribe.mockClear()
@@ -457,6 +565,47 @@ describe('Extension E2E flow (v2)', () => {
         dagNodeCount: 1
       }
     })
+  })
+
+  it('returns lineage diff report with node/status/goal deltas', async () => {
+    const extension = await import('../packages/app/src/extension.ts')
+    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+    await extension.activate(context as any)
+
+    const command = env.getCommand('proof-flow.lineageDiffReport')
+    expect(command).toBeTypeOf('function')
+
+    const report = await command?.({
+      fileUri: env.leanUri.toString(),
+      limit: 16
+    })
+
+    expect(report).toMatchObject({
+      fileUri: env.leanUri.toString(),
+      summary: {
+        edges: 1,
+        added: 1,
+        removed: 0,
+        statusChanged: 1,
+        goalChanged: 1
+      }
+    })
+
+    expect(report?.diffs?.[0]?.addedNodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: 'n2' })
+      ])
+    )
+    expect(report?.diffs?.[0]?.statusChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: 'n1', fromStatus: 'sorry', toStatus: 'resolved' })
+      ])
+    )
+    expect(report?.diffs?.[0]?.goalChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: 'n1', fromGoal: 'goal-before', toGoal: 'goal-after' })
+      ])
+    )
   })
 
   it('dispatches node_select from panel action', async () => {

@@ -125,7 +125,7 @@ export const createDagExtractEffect = (
     return [buildMergePatch(fileUri, {
       ...previous,
       fileUri,
-      dag,
+      dag: dag ?? previous.dag ?? null,
       lastSyncedAt: syncedAt
     })]
   }
@@ -133,7 +133,7 @@ export const createDagExtractEffect = (
     return [buildMergePatch(fileUri, {
       ...previous,
       fileUri,
-      dag: null,
+      dag: previous.dag ?? null,
       lastSyncedAt: syncedAt
     })]
   }

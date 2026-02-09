@@ -27,7 +27,7 @@ import {
   DropdownMenuTrigger
 } from './components/ui/dropdown-menu'
 import { Input } from './components/ui/input'
-import { toGraphLayout, graphThreshold, type GraphNode } from './lib/graph'
+import { toGraphLayout, type GraphNode } from './lib/graph'
 import {
   computeVisibleNodes,
   DEFAULT_STATUS_FILTER,
@@ -108,7 +108,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
   const [statusFilter, setStatusFilter] = useState<NodeStatusFilter>(DEFAULT_STATUS_FILTER)
   const [hideResolved, setHideResolved] = useState(false)
   const [layout, setLayout] = useState<LayoutDirection>('topDown')
-  const [showAnalyze, setShowAnalyze] = useState(false)
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
 
   useEffect(() => {
@@ -175,9 +174,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
   }, [send])
 
   const progress = projection.progress
-  const unresolvedCount = progress
-    ? Math.max(0, progress.totalGoals - progress.resolvedGoals)
-    : 0
   const percent = progress ? progressPercent(progress.totalGoals, progress.resolvedGoals) : 0
 
   return (
@@ -202,8 +198,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
             <Badge>{progress?.resolvedGoals ?? 0}/{progress?.totalGoals ?? 0} goals ({percent}%)</Badge>
             <Badge variant="error">errors: {progress?.blockedGoals ?? 0}</Badge>
             <Badge variant="warning">sorries: {progress?.sorryGoals ?? 0}</Badge>
-            <Badge variant="info">remaining: {progress?.estimatedRemaining ?? unresolvedCount}</Badge>
-            <Badge>visible: {visibleNodes.length}</Badge>
           </div>
         </CardContent>
       </Card>
@@ -221,14 +215,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
                 <Button variant="outline" size="sm">View</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuLabel>Mode</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={showAnalyze}
-                  onCheckedChange={(checked) => setShowAnalyze(checked === true)}
-                >
-                  Analyze mode
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuLabel>Layout</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={layout} onValueChange={(value) => setLayout(value as LayoutDirection)}>
                   <DropdownMenuRadioItem value="topDown">Top down</DropdownMenuRadioItem>
@@ -289,8 +275,8 @@ export function App({ initialState, postMessage }: PanelAppProps) {
 
           <div className="rounded-md border border-slate-700 bg-slate-950/60 p-2 text-xs text-slate-400">
             {graph.compactMode
-              ? `Large DAG detected (${visibleNodes.length} nodes). Compact mode enabled (threshold ${graphThreshold}).`
-              : `${visibleNodes.length} visible nodes | unresolved ${unresolvedCount}`}
+              ? 'Large proof map detected. Compact priority list mode enabled.'
+              : 'Proof map ready. Select a node to inspect goals.'}
           </div>
         </CardContent>
       </Card>
@@ -358,7 +344,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
                 <Badge variant={statusToBadgeVariant(projection.selectedNode.statusKind)}>{projection.selectedNode.statusKind}</Badge>
                 <Badge>{projection.selectedNode.kind}</Badge>
                 <Badge>line {projection.selectedNode.startLine}-{projection.selectedNode.endLine}</Badge>
-                <Badge>distance {projection.selectedNode.estimatedDistance ?? 'n/a'}</Badge>
               </div>
 
               {projection.goalChain.length === 0
@@ -447,32 +432,6 @@ export function App({ initialState, postMessage }: PanelAppProps) {
                 <span className="text-slate-400">blocks {item.dependentCount} · diff {item.estimatedDifficulty.toFixed(2)}</span>
               </button>
             ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {showAnalyze && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Analyze</CardTitle>
-            <CardDescription>Breakage map and debug context</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs text-slate-300">
-            {!projection.breakageMap || projection.breakageMap.edges.length === 0
-              ? <div className="text-slate-500">No breakage edges detected.</div>
-              : projection.breakageMap.edges.slice(0, 20).map((edge, index) => (
-                  <div key={`${edge.changedNodeId}:${edge.brokenNodeId}:${index}`} className="rounded-md border border-slate-700 bg-slate-950/70 p-2">
-                    <div>{edge.changedNodeId}{' -> '}{edge.brokenNodeId}</div>
-                    <div className="text-slate-400">{edge.errorCategory}{edge.errorMessage ? ` | ${edge.errorMessage}` : ''}</div>
-                  </div>
-                ))}
-            <div className="rounded-md border border-slate-700 bg-slate-950/70 p-2 text-slate-400">
-              world debug: head={projection.runtimeDebug.world.headWorldId ?? 'n/a'}
-              {' | '}
-              depth={projection.runtimeDebug.world.depth ?? 'n/a'}
-              {' | '}
-              branch={projection.runtimeDebug.world.branchId ?? 'n/a'}
-            </div>
           </CardContent>
         </Card>
       )}
