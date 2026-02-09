@@ -1,235 +1,114 @@
 domain ProofFlow {
-  type NodeKind =
-    "theorem" | "lemma" | "have" | "let" | "suffices" |
-    "show" | "calc_step" | "case" | "sorry" | "tactic_block"
+  type GoalStatus = "open" | "resolved" | "failed"
 
-  type StatusKind = "resolved" | "error" | "sorry" | "in_progress"
-
-  type ErrorCategory =
-    "TYPE_MISMATCH" | "UNKNOWN_IDENTIFIER" | "TACTIC_FAILED" |
-    "UNSOLVED_GOALS" | "TIMEOUT" | "KERNEL_ERROR" |
-    "SYNTAX_ERROR" | "OTHER"
-
-  type Range = {
-    startLine: number,
-    startCol: number,
-    endLine: number,
-    endCol: number
-  }
-
-  type GoalSnapshot = {
-    before: string,
-    after: string | null,
-    tactic: string,
-    appliedLemmas: Array<string>,
-    subgoalsCreated: number
-  }
-
-  type NodeStatus = {
-    kind: StatusKind,
-    errorMessage: string | null,
-    errorCategory: ErrorCategory | null
-  }
-
-  type ProofNode = {
+  type Goal = {
     id: string,
-    kind: NodeKind,
-    label: string,
-    leanRange: Range,
-    goalCurrent: string | null,
-    goalSnapshots: Array<GoalSnapshot>,
-    estimatedDistance: number | null,
-    status: NodeStatus,
-    children: Array<string>,
-    dependencies: Array<string>
+    statement: string,
+    status: GoalStatus
   }
 
-  type ProofProgress = {
-    totalGoals: number,
-    resolvedGoals: number,
-    blockedGoals: number,
-    sorryGoals: number,
-    estimatedRemaining: number | null
-  }
-
-  type ProofDAG = {
-    fileUri: string,
-    rootIds: Array<string>,
-    nodes: Record<string, ProofNode>,
-    extractedAt: number,
-    progress: ProofProgress | null
-  }
-
-  type FileState = {
-    fileUri: string,
-    dag: ProofDAG | null,
-    lastSyncedAt: number | null
-  }
-
-  type SorryItem = {
-    nodeId: string,
-    label: string,
-    goalText: string,
-    dependentCount: number,
-    estimatedDifficulty: number
-  }
-
-  type SorryQueue = {
-    items: Array<SorryItem>,
-    totalSorries: number
-  }
-
-  type Diagnosis = {
-    nodeId: string,
-    errorCategory: ErrorCategory,
-    rawMessage: string,
-    expected: string | null,
-    actual: string | null,
-    mismatchPath: string | null,
-    hint: string | null,
-    suggestedTactic: string | null
-  }
-
-  type BreakageEdge = {
-    changedNodeId: string,
-    brokenNodeId: string,
-    errorCategory: ErrorCategory,
-    errorMessage: string | null
-  }
-
-  type BreakageMap = {
-    edges: Array<BreakageEdge>,
-    lastAnalyzedAt: number | null
+  type TacticResult = {
+    goalId: string,
+    tactic: string,
+    succeeded: boolean,
+    newGoalIds: Array<string>
   }
 
   state {
-    appVersion: string = "2.0.0"
-    files: Record<string, FileState> = {}
-    activeFileUri: string | null = null
-    selectedNodeId: string | null = null
-    cursorNodeId: string | null = null
-    panelVisible: boolean = true
-    sorryQueue: SorryQueue | null = null
-    breakageMap: BreakageMap | null = null
-    activeDiagnosis: Diagnosis | null = null
+    goals: Record<string, Goal> = {}
+    activeGoalId: string | null = null
+
+    lastTactic: string | null = null
+    tacticResult: TacticResult | null = null
+
+    applyingTactic: string | null = null
+    resolvingGoal: string | null = null
+    syncingGoals: string | null = null
   }
 
-  computed activeDag =
-    and(
-      isNotNull(activeFileUri),
-      isNotNull(at(files, activeFileUri)),
-      isNotNull(at(files, activeFileUri).dag)
-    )
-      ? at(files, activeFileUri).dag
-      : null
+  computed openGoals = filter(values(goals), eq($item.status, "open"))
 
-  computed selectedNode =
-    and(
-      isNotNull(activeDag),
-      isNotNull(selectedNodeId),
-      isNotNull(at(activeDag.nodes, selectedNodeId))
-    )
-      ? at(activeDag.nodes, selectedNodeId)
-      : null
+  computed resolvedGoals = filter(values(goals), eq($item.status, "resolved"))
+
+  computed totalGoals = len(values(goals))
 
   computed progress =
-    isNotNull(activeDag)
-      ? activeDag.progress
+    and(gt(totalGoals, 0), gt(len(resolvedGoals), 0))
+      ? div(len(resolvedGoals), totalGoals)
+      : 0
+
+  computed isComplete = and(gt(totalGoals, 0), eq(len(openGoals), 0))
+
+  computed activeGoal =
+    and(isNotNull(activeGoalId), isNotNull(at(goals, activeGoalId)))
+      ? at(goals, activeGoalId)
       : null
 
-  computed goalChain =
-    isNotNull(selectedNode)
-      ? selectedNode.goalSnapshots
-      : []
+  computed isTacticPending = and(isNotNull(applyingTactic), isNull(tacticResult))
 
-  computed hasSorries =
-    and(isNotNull(sorryQueue), gt(sorryQueue.totalSorries, 0))
-
-  computed hasError =
-    isNotNull(activeDiagnosis)
-
-  action file_activate(fileUri: string) {
-    when neq(activeFileUri, fileUri) {
-      patch activeFileUri = fileUri
-      patch selectedNodeId = null
-      patch cursorNodeId = null
+  action syncGoals() {
+    once(syncingGoals) {
+      patch syncingGoals = $meta.intentId
+      effect lean.syncGoals({
+        into: goals
+      })
     }
   }
 
-  action node_select(nodeId: string)
-    available when isNotNull(activeFileUri)
-  {
-    when true {
-      patch selectedNodeId = nodeId
-
-      onceIntent {
-        effect proof_flow.editor.reveal({
-          fileUri: activeFileUri,
-          nodeId: nodeId
-        })
-      }
-
-      onceIntent {
-        effect proof_flow.diagnose({
-          fileUri: activeFileUri,
-          nodeId: nodeId
+  action applyTactic(goalId: string, tactic: string) {
+    when and(
+      gt(
+        len(filter(
+          values(goals),
+          and(eq($item.id, goalId), eq($item.status, "open"))
+        )),
+        0
+      ),
+      isNull(tacticResult),
+      isNull(applyingTactic)
+    ) {
+      once(applyingTactic) {
+        patch applyingTactic = $meta.intentId
+        patch activeGoalId = goalId
+        patch lastTactic = tactic
+        effect lean.applyTactic({
+          goalId: goalId,
+          tactic: tactic,
+          into: tacticResult
         })
       }
     }
   }
 
-  action cursor_sync(resolvedNodeId: string | null) {
-    when true {
-      patch cursorNodeId = resolvedNodeId
-    }
-  }
-
-  action panel_set(visible: boolean) {
-    when true {
-      patch panelVisible = visible
-    }
-  }
-
-  action dag_sync(fileUri: string) {
-    onceIntent {
-      effect proof_flow.dag.extract({ fileUri: fileUri })
-    }
-  }
-
-  action sorry_queue_refresh()
-    available when isNotNull(activeFileUri)
+  action commitTactic() {
+    when and(
+      isNotNull(tacticResult),
+      tacticResult.succeeded
+    )
   {
-    onceIntent {
-      effect proof_flow.sorry.analyze({
-        fileUri: activeFileUri
-      })
+      once(resolvingGoal) {
+        patch resolvingGoal = $meta.intentId
+        patch tacticResult = null
+        patch applyingTactic = null
+        effect lean.syncGoals({
+          into: goals
+        })
+      }
     }
   }
 
-  action breakage_analyze()
-    available when isNotNull(activeFileUri)
-  {
-    onceIntent {
-      effect proof_flow.breakage.analyze({
-        fileUri: activeFileUri
-      })
+  action dismissTactic() {
+    when isNotNull(tacticResult) {
+      onceIntent {
+        patch tacticResult = null
+        patch applyingTactic = null
+      }
     }
   }
 
-  action diagnose(nodeId: string)
-    available when isNotNull(activeFileUri)
-  {
+  action selectGoal(goalId: string | null) {
     onceIntent {
-      effect proof_flow.diagnose({
-        fileUri: activeFileUri,
-        nodeId: nodeId
-      })
-    }
-  }
-
-  action diagnosis_dismiss() {
-    when true {
-      patch activeDiagnosis = null
+      patch activeGoalId = goalId
     }
   }
 }

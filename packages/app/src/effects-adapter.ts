@@ -1,10 +1,11 @@
 import * as vscode from 'vscode'
-import type { Range } from '@proof-flow/schema'
 import {
   createProofFlowEffects,
+  type LeanApplyTacticOutcome,
+  type LeanContext,
   type LeanDiagnostic,
   type LeanDiagnosticSeverity,
-  type LeanGoalHint
+  type LeanRange
 } from '@proof-flow/host'
 
 export const isLeanDocument = (document: vscode.TextDocument): boolean => (
@@ -13,14 +14,6 @@ export const isLeanDocument = (document: vscode.TextDocument): boolean => (
 )
 
 export const isLeanUri = (uri: vscode.Uri): boolean => uri.path.endsWith('.lean')
-
-const toVscodeRange = (range: Range): vscode.Range => {
-  const startLine = Math.max(range.startLine - 1, 0)
-  const endLine = Math.max(range.endLine - 1, startLine)
-  const startCol = Math.max(range.startCol, 0)
-  const endCol = Math.max(range.endCol, startCol)
-  return new vscode.Range(startLine, startCol, endLine, endCol)
-}
 
 const normalizeDiagnosticCode = (
   code: vscode.Diagnostic['code']
@@ -62,144 +55,153 @@ const toLeanDiagnostic = (diagnostic: vscode.Diagnostic): LeanDiagnostic => ({
   }
 })
 
-const extractGoalLines = (message: string): string[] => message
-  .split(/\r?\n/)
-  .map((line) => line.trim())
-  .filter((line) => line.includes('⊢') || line.toLowerCase().startsWith('goal:'))
-  .map((line) => line.startsWith('goal:') ? line.slice(5).trim() : line)
-  .filter((line) => line.length > 0)
-
-const extractGoalHintsFromDiagnostics = (
-  diagnostics: readonly vscode.Diagnostic[]
-): LeanGoalHint[] => {
-  const hints: LeanGoalHint[] = []
-  for (const diagnostic of diagnostics) {
-    const goals = extractGoalLines(diagnostic.message)
-    for (const goal of goals) {
-      hints.push({
-        goal,
-        range: {
-          startLine: diagnostic.range.start.line + 1,
-          startCol: diagnostic.range.start.character,
-          endLine: diagnostic.range.end.line + 1,
-          endCol: diagnostic.range.end.character
-        },
-        source: 'diagnostic'
-      })
-    }
+const getActiveLeanEditor = (): vscode.TextEditor | null => {
+  const editor = vscode.window.activeTextEditor
+  if (!editor || !isLeanDocument(editor.document)) {
+    return null
   }
 
-  return hints
+  return editor
 }
 
-const extractGoalHintsFromDeclarations = (sourceText: string): LeanGoalHint[] => {
-  const hints: LeanGoalHint[] = []
-  const lines = sourceText.split(/\r?\n/)
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ''
-    const trimmed = line.trim()
-    if (!/^(theorem|lemma)\b/.test(trimmed)) {
-      continue
-    }
-
-    const byIndex = trimmed.indexOf(':= by')
-    if (byIndex < 0) {
-      continue
-    }
-
-    const head = trimmed.slice(0, byIndex)
-    const goalSeparator = head.lastIndexOf(':')
-    if (goalSeparator < 0) {
-      continue
-    }
-
-    const goal = head.slice(goalSeparator + 1).trim()
-    if (goal.length === 0) {
-      continue
-    }
-
-    hints.push({
-      goal,
-      range: {
-        startLine: index + 1,
-        startCol: 0,
-        endLine: index + 1,
-        endCol: line.length
-      },
-      source: 'declaration'
-    })
+const loadActiveLeanContext = async (): Promise<LeanContext | null> => {
+  const editor = getActiveLeanEditor()
+  if (!editor) {
+    return null
   }
 
-  return hints
+  const uri = editor.document.uri
+  const diagnostics = vscode.languages.getDiagnostics(uri)
+
+  return {
+    fileUri: uri.toString(),
+    sourceText: editor.document.getText(),
+    diagnostics: diagnostics.map(toLeanDiagnostic)
+  }
 }
 
-const dedupeGoalHints = (hints: readonly LeanGoalHint[]): LeanGoalHint[] => {
-  const deduped: LeanGoalHint[] = []
-  const seen = new Set<string>()
+const toVscodeRange = (range: LeanRange): vscode.Range => new vscode.Range(
+  Math.max(0, range.startLine - 1),
+  Math.max(0, range.startCol),
+  Math.max(0, range.endLine - 1),
+  Math.max(0, range.endCol)
+)
 
-  for (const hint of hints) {
-    const goal = hint.goal.trim()
-    if (goal.length === 0) {
-      continue
+const locateSorryRange = (
+  document: vscode.TextDocument,
+  hintRange: LeanRange | null
+): vscode.Range | null => {
+  const lines = document.getText().split(/\r?\n/)
+
+  if (hintRange) {
+    const lineIndex = Math.max(0, hintRange.startLine - 1)
+    const line = lines[lineIndex] ?? ''
+    const sorryIndex = line.indexOf('sorry')
+    if (sorryIndex >= 0) {
+      return new vscode.Range(lineIndex, sorryIndex, lineIndex, sorryIndex + 'sorry'.length)
     }
 
-    const range = hint.range
-      ? `${hint.range.startLine}:${hint.range.startCol}:${hint.range.endLine}:${hint.range.endCol}`
-      : ''
-    const key = [goal, hint.source ?? '', range, hint.nodeId ?? ''].join('|')
-    if (seen.has(key)) {
-      continue
-    }
-
-    seen.add(key)
-    deduped.push(hint)
+    return toVscodeRange(hintRange)
   }
 
-  return deduped
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? ''
+    const sorryIndex = line.indexOf('sorry')
+    if (sorryIndex >= 0) {
+      return new vscode.Range(lineIndex, sorryIndex, lineIndex, sorryIndex + 'sorry'.length)
+    }
+  }
+
+  return null
+}
+
+const waitForDiagnosticsQuiet = (uri: vscode.Uri, stableMs = 180, timeoutMs = 1200): Promise<void> => new Promise((resolve) => {
+  let settled = false
+  let quietTimer: ReturnType<typeof setTimeout> | null = null
+  let timeoutTimer: ReturnType<typeof setTimeout> | null = null
+
+  const finish = () => {
+    if (settled) {
+      return
+    }
+
+    settled = true
+    if (quietTimer) {
+      clearTimeout(quietTimer)
+      quietTimer = null
+    }
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer)
+      timeoutTimer = null
+    }
+    subscription.dispose()
+    resolve()
+  }
+
+  const resetQuietTimer = () => {
+    if (quietTimer) {
+      clearTimeout(quietTimer)
+    }
+    quietTimer = setTimeout(() => finish(), stableMs)
+  }
+
+  const subscription = vscode.languages.onDidChangeDiagnostics((event) => {
+    if (event.uris.some((candidate) => candidate.toString() === uri.toString())) {
+      resetQuietTimer()
+    }
+  })
+
+  timeoutTimer = setTimeout(() => finish(), timeoutMs)
+  resetQuietTimer()
+})
+
+const applyTacticAtGoal = async (input: {
+  fileUri: string
+  tactic: string
+  range: LeanRange | null
+}): Promise<LeanApplyTacticOutcome> => {
+  try {
+    const uri = vscode.Uri.parse(input.fileUri)
+    const document = await vscode.workspace.openTextDocument(uri)
+    const targetRange = locateSorryRange(document, input.range)
+    if (!targetRange) {
+      return {
+        succeeded: false,
+        errorMessage: 'TARGET_NOT_FOUND'
+      }
+    }
+
+    const edit = new vscode.WorkspaceEdit()
+    edit.replace(uri, targetRange, input.tactic)
+    const applied = await vscode.workspace.applyEdit(edit)
+    if (!applied) {
+      return {
+        succeeded: false,
+        errorMessage: 'EDIT_REJECTED'
+      }
+    }
+
+    await waitForDiagnosticsQuiet(uri)
+    return { succeeded: true }
+  }
+  catch (error) {
+    return {
+      succeeded: false,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    }
+  }
 }
 
 export const createVscodeProofFlowEffects = () => createProofFlowEffects({
-  dagExtract: {
-    loadContext: async ({ fileUri }) => {
-      const uri = vscode.Uri.parse(fileUri)
-      const document = await vscode.workspace.openTextDocument(uri)
-      const diagnostics = vscode.languages.getDiagnostics(uri)
-      const sourceText = document.getText()
-
-      return {
-        fileUri,
-        sourceText,
-        diagnostics: diagnostics.map(toLeanDiagnostic),
-        goals: dedupeGoalHints([
-          ...extractGoalHintsFromDiagnostics(diagnostics),
-          ...extractGoalHintsFromDeclarations(sourceText)
-        ])
-      }
-    }
+  syncGoals: {
+    loadContext: loadActiveLeanContext
   },
-  editorReveal: {
-    reveal: async ({ fileUri, range }) => {
-      const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(fileUri))
-      const editor = await vscode.window.showTextDocument(document)
-      editor.revealRange(toVscodeRange(range), vscode.TextEditorRevealType.InCenter)
-    }
-  },
-  editorGetCursor: {
-    getCursor: async () => {
-      const editor = vscode.window.activeTextEditor
-      if (!editor) {
-        throw new Error('No active editor')
-      }
-
-      const position = editor.selection.active
-      return {
-        fileUri: editor.document.uri.toString(),
-        position: {
-          line: position.line + 1,
-          column: position.character
-        }
-      }
-    }
+  applyTactic: {
+    loadContext: loadActiveLeanContext,
+    applyTactic: async ({ fileUri, tactic, range }) => applyTacticAtGoal({
+      fileUri,
+      tactic,
+      range
+    })
   }
 })

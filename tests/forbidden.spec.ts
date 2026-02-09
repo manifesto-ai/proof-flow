@@ -69,19 +69,19 @@ describe('Forbidden patterns', () => {
     }
   })
 
-  it('FORBID-9: MEL effects are guarded by onceIntent', async () => {
+  it('FORBID-9: MEL effects are guarded by once*/intent guards', async () => {
     const mel = await readFile(join(root, 'packages', 'schema', 'domain.mel'), 'utf8')
     const lines = mel.split(/\r?\n/)
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? ''
-      if (!line.includes('effect proof_flow.')) {
+      if (!line.includes('effect lean.')) {
         continue
       }
 
       const windowStart = Math.max(0, i - 6)
       const context = lines.slice(windowStart, i + 1).join('\n')
-      expect(context.includes('onceIntent')).toBe(true)
+      expect(context.includes('onceIntent') || context.includes('once(')).toBe(true)
     }
   })
 })

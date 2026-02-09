@@ -1,4 +1,4 @@
-import type { ErrorCategory } from '@proof-flow/schema'
+import type { ErrorCategory } from './types.js'
 
 type PatternRule = {
   category: ErrorCategory

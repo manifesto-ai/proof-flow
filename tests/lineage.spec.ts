@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createTestApp, type App, type Effects } from '@manifesto-ai/app'
-import type { ProofDAG, ProofFlowState } from '../packages/schema/src/index.js'
+import type { App, Effects } from '@manifesto-ai/app'
+import type { ProofFlowState } from '../packages/schema/src/index.js'
+import { createProofFlowApp } from '../packages/app/src/config.js'
 
 const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
@@ -12,15 +13,9 @@ const apps: App[] = []
 
 const createApp = async (effects: Effects) => {
   const domainMel = await domainMelPromise
-  const app = createTestApp(domainMel, {
-    effects,
-    actorPolicy: {
-      mode: 'require',
-      defaultActor: {
-        actorId: 'proof-flow:local-user',
-        kind: 'human'
-      }
-    }
+  const app = createProofFlowApp({
+    schema: domainMel,
+    effects
   })
 
   await app.ready()
@@ -28,51 +23,35 @@ const createApp = async (effects: Effects) => {
   return app
 }
 
-const makeDag = (fileUri: string): ProofDAG => ({
-  fileUri,
-  rootIds: ['root'],
-  nodes: {
-    root: {
-      id: 'root',
-      kind: 'theorem',
-      label: 'root',
-      leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-      goalCurrent: null,
-      goalSnapshots: [],
-      estimatedDistance: 0,
-      status: { kind: 'resolved', errorMessage: null, errorCategory: null },
-      children: [],
-      dependencies: []
-    }
+const deterministicEffects = (): Effects => ({
+  'lean.syncGoals': async (params) => {
+    const into = (params as { into: string }).into
+    return [{
+      op: 'set',
+      path: into,
+      value: {
+        g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+      }
+    }]
   },
-  extractedAt: 123,
-  progress: {
-    totalGoals: 0,
-    resolvedGoals: 0,
-    blockedGoals: 0,
-    sorryGoals: 0,
-    estimatedRemaining: 0
+  'lean.applyTactic': async (params) => {
+    const into = (params as { into: string }).into
+    return [{
+      op: 'set',
+      path: into,
+      value: {
+        goalId: 'g1',
+        tactic: 'exact True.intro',
+        succeeded: true,
+        newGoalIds: []
+      }
+    }]
   }
 })
 
-const deterministicEffects = (fileUri: string): Effects => ({
-  'proof_flow.dag.extract': async () => [{
-    op: 'merge',
-    path: 'files',
-    value: {
-      [fileUri]: {
-        fileUri,
-        dag: makeDag(fileUri),
-        lastSyncedAt: 456
-      }
-    }
-  }],
-  'proof_flow.editor.reveal': async () => [],
-  'proof_flow.diagnose': async () => []
-})
-
 const stripPlatformState = (data: ProofFlowState & Record<string, unknown>) => {
-  const entries = Object.entries(data).filter(([key]) => !key.startsWith('$'))
+  const ephemeralKeys = new Set(['applyingTactic', 'resolvingGoal', 'syncingGoals'])
+  const entries = Object.entries(data).filter(([key]) => !key.startsWith('$') && !ephemeralKeys.has(key))
   return Object.fromEntries(entries)
 }
 
@@ -82,19 +61,18 @@ afterEach(async () => {
 
 describe('ProofFlow lineage invariants', () => {
   it('creates retrievable immutable heads as actions commit', async () => {
-    const fileUri = 'file:///proof.lean'
-    const app = await createApp(deterministicEffects(fileUri))
+    const app = await createApp(deterministicEffects())
 
-    if (!app.getCurrentHead || !app.getSnapshot || !app.getWorld) {
+    if (!app.getCurrentHead || !app.getSnapshot) {
       throw new Error('App lineage APIs are unavailable')
     }
 
     const head0 = app.getCurrentHead()
-    await app.act('file_activate', { fileUri }).done()
+    await app.act('syncGoals').done()
     const head1 = app.getCurrentHead()
-    await app.act('dag_sync', { fileUri }).done()
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
     const head2 = app.getCurrentHead()
-    await app.act('panel_set', { visible: false }).done()
+    await app.act('commitTactic').done()
     const head3 = app.getCurrentHead()
 
     expect(new Set([head0, head1, head2, head3]).size).toBe(4)
@@ -103,22 +81,20 @@ describe('ProofFlow lineage invariants', () => {
     const snapshot2 = await app.getSnapshot(head2)
     const snapshot3 = await app.getSnapshot(head3)
 
-    expect(snapshot1.data.activeFileUri).toBe(fileUri)
-    expect(snapshot2.data.files[fileUri]?.dag).not.toBeNull()
-    expect(snapshot3.data.panelVisible).toBe(false)
+    expect(snapshot1.data.goals.g1.status).toBe('open')
+    expect(snapshot2.data.tacticResult.succeeded).toBe(true)
+    expect(snapshot3.data.tacticResult).toBeNull()
   })
 
   it('replays same action log into identical domain state', async () => {
-    const fileUri = 'file:///proof.lean'
-    const appA = await createApp(deterministicEffects(fileUri))
-    const appB = await createApp(deterministicEffects(fileUri))
+    const appA = await createApp(deterministicEffects())
+    const appB = await createApp(deterministicEffects())
 
     for (const app of [appA, appB]) {
-      await app.act('file_activate', { fileUri }).done()
-      await app.act('dag_sync', { fileUri }).done()
-      await app.act('node_select', { nodeId: 'root' }).done()
-      await app.act('cursor_sync', { resolvedNodeId: 'root' }).done()
-      await app.act('panel_set', { visible: false }).done()
+      await app.act('syncGoals').done()
+      await app.act('selectGoal', { goalId: 'g1' }).done()
+      await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
+      await app.act('commitTactic').done()
     }
 
     const stateA = appA.getState<ProofFlowState & Record<string, unknown>>()

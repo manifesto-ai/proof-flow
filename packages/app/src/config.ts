@@ -14,28 +14,21 @@ export type ProofFlowAppOptions = {
 }
 
 const createInitialData = (): ProofFlowState => ({
-  appVersion: '2.0.0',
-  files: {},
-  activeFileUri: null,
-  selectedNodeId: null,
-  cursorNodeId: null,
-  panelVisible: true,
-  sorryQueue: null,
-  breakageMap: null,
-  activeDiagnosis: null
+  goals: {},
+  activeGoalId: null,
+  lastTactic: null,
+  tacticResult: null,
+  applyingTactic: null,
+  resolvingGoal: null,
+  syncingGoals: null
 })
 
-/**
- * Manifesto v2.2+ uses effects-first AppConfig.
- * Host/World are created internally unless a custom world is injected.
- */
 export const createProofFlowApp = (options: ProofFlowAppOptions): App => {
   const config: AppConfig = {
     schema: options.schema,
     effects: options.effects,
     initialData: createInitialData(),
     world: options.world,
-    // Keep governance explicit: single-user local workflow auto-approves.
     policyService: createSilentPolicyService(),
     validation: { effects: 'strict' },
     actorPolicy: {

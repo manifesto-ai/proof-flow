@@ -1,7 +1,10 @@
 import type { ProjectionState } from './projection-state.js'
 
 export type PanelToExtensionMessage =
-  | { type: 'nodeClick'; payload: { nodeId: string } }
+  | { type: 'selectGoal'; payload: { goalId: string | null } }
+  | { type: 'applyTactic'; payload: { goalId: string; tactic: string } }
+  | { type: 'commitTactic' }
+  | { type: 'dismissTactic' }
   | { type: 'togglePanel' }
 
 export type ExtensionToPanelMessage = {
@@ -39,16 +42,41 @@ export const parsePanelToExtensionMessage = (
   switch (type) {
     case 'togglePanel':
       return { type }
-    case 'nodeClick': {
+    case 'commitTactic':
+      return { type }
+    case 'dismissTactic':
+      return { type }
+    case 'selectGoal': {
       const payload = asRecord(message.payload)
-      const nodeId = asString(payload?.nodeId)
-      if (!nodeId) {
+      const goalIdRaw = payload?.goalId
+      if (goalIdRaw === null) {
+        return {
+          type,
+          payload: { goalId: null }
+        }
+      }
+
+      const goalId = asString(goalIdRaw)
+      if (!goalId) {
         return null
       }
 
       return {
         type,
-        payload: { nodeId }
+        payload: { goalId }
+      }
+    }
+    case 'applyTactic': {
+      const payload = asRecord(message.payload)
+      const goalId = asString(payload?.goalId)
+      const tactic = asString(payload?.tactic)
+      if (!goalId || !tactic) {
+        return null
+      }
+
+      return {
+        type,
+        payload: { goalId, tactic }
       }
     }
     default:

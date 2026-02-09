@@ -62,7 +62,7 @@ describe('Manifesto compliance guards', () => {
     const withExtraPlatformData = JSON.parse(JSON.stringify(snapshot)) as typeof snapshot
     withExtraPlatformData.data.$host = {
       intentSlots: {
-        intent_x: { type: 'dag_sync' }
+        intent_x: { type: 'syncGoals' }
       }
     }
     withExtraPlatformData.data.$mel = {

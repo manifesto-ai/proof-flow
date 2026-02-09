@@ -1,11 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createTestApp, type App, type Effects } from '@manifesto-ai/app'
-import type {
-  Diagnosis,
-  ProofDAG,
-  ProofFlowState
-} from '../packages/schema/src/index.js'
+import type { App, Effects } from '@manifesto-ai/app'
+import type { ProofFlowState } from '../packages/schema/src/index.js'
+import { createProofFlowApp } from '../packages/app/src/config.js'
 
 const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
@@ -16,15 +13,9 @@ const apps: App[] = []
 
 const createApp = async (effects: Effects) => {
   const domainMel = await domainMelPromise
-  const app = createTestApp(domainMel, {
-    effects,
-    actorPolicy: {
-      mode: 'require',
-      defaultActor: {
-        actorId: 'proof-flow:local-user',
-        kind: 'human'
-      }
-    }
+  const app = createProofFlowApp({
+    schema: domainMel,
+    effects
   })
 
   await app.ready()
@@ -32,173 +23,151 @@ const createApp = async (effects: Effects) => {
   return app
 }
 
-const makeDag = (fileUri: string): ProofDAG => ({
-  fileUri,
-  rootIds: ['root'],
-  nodes: {
-    root: {
-      id: 'root',
-      kind: 'theorem',
-      label: 'root',
-      leanRange: { startLine: 1, startCol: 0, endLine: 2, endCol: 10 },
-      goalCurrent: null,
-      goalSnapshots: [],
-      estimatedDistance: 0,
-      status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-      children: ['todo'],
-      dependencies: []
-    },
-    todo: {
-      id: 'todo',
-      kind: 'sorry',
-      label: 'todo',
-      leanRange: { startLine: 3, startCol: 2, endLine: 3, endCol: 12 },
-      goalCurrent: '⊢ True',
-      goalSnapshots: [],
-      estimatedDistance: 1,
-      status: { kind: 'sorry', errorMessage: null, errorCategory: 'OTHER' },
-      children: [],
-      dependencies: ['root']
-    }
-  },
-  extractedAt: 123,
-  progress: {
-    totalGoals: 1,
-    resolvedGoals: 0,
-    blockedGoals: 0,
-    sorryGoals: 1,
-    estimatedRemaining: 1
-  }
-})
-
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.dispose()))
 })
 
 describe('ProofFlow v2 domain actions', () => {
-  it('dag_sync merges file state from host effect', async () => {
-    const fileUri = 'file:///proof.lean'
-    const dag = makeDag(fileUri)
-
+  it('syncGoals stores extracted goals', async () => {
     const app = await createApp({
-      'proof_flow.dag.extract': async (params) => {
-        const target = (params as { fileUri: string }).fileUri
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
         return [{
-          op: 'merge',
-          path: 'files',
+          op: 'set',
+          path: into,
           value: {
-            [target]: {
-              fileUri: target,
-              dag,
-              lastSyncedAt: 456
-            }
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' },
+            g2: { id: 'g2', statement: '⊢ False', status: 'failed' }
+          }
+        }]
+      },
+      'lean.applyTactic': async () => []
+    })
+
+    await app.act('syncGoals').done()
+
+    const state = app.getState<ProofFlowState>()
+    expect(Object.keys(state.data.goals)).toEqual(['g1', 'g2'])
+    expect(state.data.goals.g1?.status).toBe('open')
+  })
+
+  it('applyTactic success then commitTactic resolves target goal', async () => {
+    let syncCount = 0
+    const app = await createApp({
+      'lean.syncGoals': async (params) => {
+        syncCount += 1
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ True', status: syncCount > 1 ? 'resolved' : 'open' }
+          }
+        }]
+      },
+      'lean.applyTactic': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: 'exact True.intro',
+            succeeded: true,
+            newGoalIds: []
           }
         }]
       }
     })
 
-    await app.act('dag_sync', { fileUri }).done()
+    await app.act('syncGoals').done()
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
+    await app.act('commitTactic').done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.files[fileUri]?.dag).toEqual(dag)
+    expect(state.data.goals.g1?.status).toBe('resolved')
+    expect(state.data.tacticResult).toBeNull()
+    expect(state.data.applyingTactic).toBeNull()
   })
 
-  it('file_activate updates root navigation fields', async () => {
-    const app = await createApp({})
-    const fileUri = 'file:///proof.lean'
-
-    await app.act('file_activate', { fileUri }).done()
-
-    const state = app.getState<ProofFlowState>()
-    expect(state.data.activeFileUri).toBe(fileUri)
-    expect(state.data.selectedNodeId).toBeNull()
-    expect(state.data.cursorNodeId).toBeNull()
-  })
-
-  it('node_select triggers reveal and diagnose effects', async () => {
-    const fileUri = 'file:///proof.lean'
-    const revealCalls: Array<{ fileUri: string; nodeId: string }> = []
-    const diagnoseCalls: Array<{ fileUri: string; nodeId: string }> = []
-    const diagnosis: Diagnosis = {
-      nodeId: 'todo',
-      errorCategory: 'UNSOLVED_GOALS',
-      rawMessage: 'unsolved goals',
-      expected: null,
-      actual: null,
-      mismatchPath: null,
-      hint: 'split goals',
-      suggestedTactic: 'cases'
-    }
-
+  it('applyTactic failure keeps goal open and dismiss clears pending result', async () => {
     const app = await createApp({
-      'proof_flow.editor.reveal': async (params) => {
-        revealCalls.push(params as { fileUri: string; nodeId: string })
-        return []
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+          }
+        }]
       },
-      'proof_flow.diagnose': async (params) => {
-        diagnoseCalls.push(params as { fileUri: string; nodeId: string })
-        return [{ op: 'set', path: 'activeDiagnosis', value: diagnosis }]
+      'lean.applyTactic': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: 'omega',
+            succeeded: false,
+            newGoalIds: []
+          }
+        }]
       }
     })
 
-    await app.act('file_activate', { fileUri }).done()
-    await app.act('node_select', { nodeId: 'todo' }).done()
+    await app.act('syncGoals').done()
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }).done()
+    await app.act('dismissTactic').done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.selectedNodeId).toBe('todo')
-    expect(revealCalls).toHaveLength(1)
-    expect(diagnoseCalls).toHaveLength(1)
-    expect(state.data.activeDiagnosis?.nodeId).toBe('todo')
+    expect(state.data.goals.g1?.status).toBe('open')
+    expect(state.data.tacticResult).toBeNull()
+    expect(state.data.applyingTactic).toBeNull()
   })
 
-  it('panel_set and cursor_sync update root state directly', async () => {
-    const app = await createApp({})
-
-    await app.act('panel_set', { visible: false }).done()
-    await app.act('cursor_sync', { resolvedNodeId: 'root' }).done()
-
-    const state = app.getState<ProofFlowState>()
-    expect(state.data.panelVisible).toBe(false)
-    expect(state.data.cursorNodeId).toBe('root')
-  })
-
-  it('refreshes sorry queue and breakage map via effects', async () => {
+  it('selectGoal updates activeGoalId', async () => {
     const app = await createApp({
-      'proof_flow.sorry.analyze': async () => [{
-        op: 'set',
-        path: 'sorryQueue',
-        value: {
-          items: [{
-            nodeId: 'todo',
-            label: 'todo',
-            goalText: '⊢ True',
-            dependentCount: 0,
-            estimatedDifficulty: 0.2
-          }],
-          totalSorries: 1
-        }
-      }],
-      'proof_flow.breakage.analyze': async () => [{
-        op: 'set',
-        path: 'breakageMap',
-        value: {
-          edges: [{
-            changedNodeId: 'def:a',
-            brokenNodeId: 'thm:b',
-            errorCategory: 'TYPE_MISMATCH',
-            errorMessage: 'type mismatch'
-          }],
-          lastAnalyzedAt: 10
-        }
-      }]
+      'lean.syncGoals': async () => [],
+      'lean.applyTactic': async () => []
     })
 
-    await app.act('file_activate', { fileUri: 'file:///proof.lean' }).done()
-    await app.act('sorry_queue_refresh').done()
-    await app.act('breakage_analyze').done()
+    await app.act('selectGoal', { goalId: 'g1' }).done()
+    expect(app.getState<ProofFlowState>().data.activeGoalId).toBe('g1')
+
+    await app.act('selectGoal', { goalId: null }).done()
+    expect(app.getState<ProofFlowState>().data.activeGoalId).toBeNull()
+  })
+
+  it('blocks re-apply while tacticResult is present (no-op)', async () => {
+    const app = await createApp({
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{ op: 'set', path: into, value: { g1: { id: 'g1', statement: '⊢ True', status: 'open' } } }]
+      },
+      'lean.applyTactic': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: 'simp',
+            succeeded: false,
+            newGoalIds: []
+          }
+        }]
+      }
+    })
+
+    await app.act('syncGoals').done()
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }).done()
+
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }).done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.sorryQueue?.totalSorries).toBe(1)
-    expect(state.data.breakageMap?.edges).toHaveLength(1)
+    expect(state.data.lastTactic).toBe('simp')
+    expect(state.data.tacticResult?.tactic).toBe('simp')
   })
 })

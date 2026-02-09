@@ -20,28 +20,24 @@ declare global {
 
 const toDefaultProjectionState = (): ProjectionState => ({
   ui: {
-    panelVisible: true,
-    activeFileUri: null,
-    selectedNodeId: null,
-    cursorNodeId: null
+    panelVisible: true
   },
-  activeDag: null,
-  progress: null,
+  activeFileUri: null,
+  goals: [],
+  selectedGoal: null,
+  progress: {
+    totalGoals: 0,
+    resolvedGoals: 0,
+    openGoals: 0,
+    failedGoals: 0,
+    ratio: 0
+  },
+  isComplete: false,
+  isTacticPending: false,
+  lastTactic: null,
+  tacticResult: null,
   nodes: [],
-  selectedNode: null,
-  goalChain: [],
-  hasSorries: false,
-  sorryQueue: [],
-  hasError: false,
-  activeDiagnosis: null,
-  breakageMap: null,
-  runtimeDebug: {
-    world: {
-      headWorldId: null,
-      depth: null,
-      branchId: null
-    }
-  }
+  diagnostics: []
 })
 
 const vscode = acquireVsCodeApi()

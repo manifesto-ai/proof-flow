@@ -19,76 +19,76 @@ const env = vi.hoisted(() => {
     }
   }
 
-  class Range {
-    readonly start: { line: number; character: number }
-    readonly end: { line: number; character: number }
-
-    constructor(startLine: number, startCol: number, endLine: number, endCol: number) {
-      this.start = { line: startLine, character: startCol }
-      this.end = { line: endLine, character: endCol }
-    }
-  }
-
   const listeners = {
     editor: [] as Array<(editor: unknown) => unknown>,
     save: [] as Array<(document: unknown) => unknown>,
-    selection: [] as Array<(event: unknown) => unknown>,
     diagnostics: [] as Array<(event: unknown) => unknown>
   }
 
-  const actCalls: Array<{ type: string; input: unknown }> = []
   const commands = new Map<string, (...args: unknown[]) => unknown>()
-  const panelInstances: any[] = []
+  const panelInstances: Array<{ actions: any; instance: any }> = []
+  const actCalls: Array<{ type: string; input: unknown }> = []
 
   const leanUri = makeUri('file:///active.lean')
-  const textUri = makeUri('file:///note.txt')
 
   const fakeState: any = {
     data: {
-      appVersion: '2.0.0',
-      files: {
-        [leanUri.toString()]: {
+      goals: {
+        g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+      },
+      activeGoalId: null,
+      lastTactic: null,
+      tacticResult: null,
+      applyingTactic: null,
+      resolvingGoal: null,
+      syncingGoals: null,
+      $host: {
+        leanState: {
           fileUri: leanUri.toString(),
           dag: {
-            fileUri: leanUri.toString(),
-            rootIds: ['root'],
             nodes: {
               root: {
-                id: 'root',
+                nodeId: 'root',
+                label: leanUri.toString(),
+                kind: 'definition',
+                startLine: 1,
+                endLine: 10,
+                parentId: null,
+                status: 'in_progress',
+                errorMessage: null,
+                errorCategory: null,
+                goalId: null
+              },
+              n1: {
+                nodeId: 'n1',
+                label: 'theorem t : True := by',
                 kind: 'theorem',
-                label: 'root',
-                leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-                goalCurrent: null,
-                goalSnapshots: [],
-                estimatedDistance: 0,
-                status: { kind: 'resolved', errorMessage: null, errorCategory: null },
-                children: [],
-                dependencies: []
+                startLine: 2,
+                endLine: 4,
+                parentId: 'root',
+                status: 'sorry',
+                errorMessage: null,
+                errorCategory: null,
+                goalId: 'g1'
               }
             },
-            extractedAt: 1,
-            progress: {
-              totalGoals: 0,
-              resolvedGoals: 0,
-              blockedGoals: 0,
-              sorryGoals: 0,
-              estimatedRemaining: 0
+            edges: [{ source: 'root', target: 'n1' }]
+          },
+          goalPositions: {
+            g1: {
+              startLine: 3,
+              startCol: 2,
+              endLine: 3,
+              endCol: 7
             }
           },
-          lastSyncedAt: 1
+          diagnostics: [],
+          lastElaboratedAt: 1
         }
-      },
-      activeFileUri: leanUri.toString(),
-      selectedNodeId: null,
-      cursorNodeId: null,
-      panelVisible: true,
-      sorryQueue: null,
-      breakageMap: null,
-      activeDiagnosis: null
+      }
     },
     computed: {
-      'computed.activeDag': null,
-      'computed.selectedNode': null
+      'computed.isTacticPending': false
     },
     system: {
       status: 'idle',
@@ -105,108 +105,33 @@ const env = vi.hoisted(() => {
     }
   }
 
-  const fakeWorlds: Record<string, unknown> = {
-    w_prev: { worldId: 'w_prev', createdAt: 1 },
-    w_head: { worldId: 'w_head', createdAt: 2 }
-  }
-
   const fakeSnapshots: Record<string, unknown> = {
     w_prev: {
       data: {
-        files: {
-          [leanUri.toString()]: {
-            fileUri: leanUri.toString(),
-            dag: {
-              fileUri: leanUri.toString(),
-              rootIds: ['root'],
-              extractedAt: 1,
-              nodes: {
-                root: {
-                  id: 'root',
-                  kind: 'theorem',
-                  label: 'root',
-                  leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-                  goalCurrent: null,
-                  goalSnapshots: [],
-                  estimatedDistance: 0,
-                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-                  children: ['n1'],
-                  dependencies: []
-                },
-                n1: {
-                  id: 'n1',
-                  kind: 'theorem',
-                  label: 'n1',
-                  leanRange: { startLine: 2, startCol: 0, endLine: 2, endCol: 10 },
-                  goalCurrent: 'goal-before',
-                  goalSnapshots: [],
-                  estimatedDistance: 1,
-                  status: { kind: 'sorry', errorMessage: 'sorry', errorCategory: 'OTHER' },
-                  children: [],
-                  dependencies: ['root']
-                }
-              },
-              progress: null
-            },
-            lastSyncedAt: 1
-          }
-        }
+        goals: {
+          g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+        },
+        tacticResult: null
       }
     },
     w_head: {
       data: {
-        files: {
-          [leanUri.toString()]: {
-            fileUri: leanUri.toString(),
-            dag: {
-              fileUri: leanUri.toString(),
-              rootIds: ['root'],
-              extractedAt: 2,
-              nodes: {
-                root: {
-                  id: 'root',
-                  kind: 'theorem',
-                  label: 'root',
-                  leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-                  goalCurrent: null,
-                  goalSnapshots: [],
-                  estimatedDistance: 0,
-                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-                  children: ['n1', 'n2'],
-                  dependencies: []
-                },
-                n1: {
-                  id: 'n1',
-                  kind: 'theorem',
-                  label: 'n1',
-                  leanRange: { startLine: 2, startCol: 0, endLine: 2, endCol: 10 },
-                  goalCurrent: 'goal-after',
-                  goalSnapshots: [],
-                  estimatedDistance: 0,
-                  status: { kind: 'resolved', errorMessage: null, errorCategory: null },
-                  children: [],
-                  dependencies: ['root']
-                },
-                n2: {
-                  id: 'n2',
-                  kind: 'have',
-                  label: 'n2',
-                  leanRange: { startLine: 4, startCol: 0, endLine: 4, endCol: 10 },
-                  goalCurrent: 'new-goal',
-                  goalSnapshots: [],
-                  estimatedDistance: 1,
-                  status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-                  children: [],
-                  dependencies: ['root']
-                }
-              },
-              progress: null
-            },
-            lastSyncedAt: 2
-          }
+        goals: {
+          g1: { id: 'g1', statement: '⊢ True', status: 'resolved' }
+        },
+        tacticResult: {
+          goalId: 'g1',
+          tactic: 'exact True.intro',
+          succeeded: true,
+          newGoalIds: []
         }
       }
     }
+  }
+
+  const fakeWorlds: Record<string, { createdAt: number }> = {
+    w_prev: { createdAt: 1 },
+    w_head: { createdAt: 2 }
   }
 
   const fakeApp = {
@@ -214,62 +139,53 @@ const env = vi.hoisted(() => {
     dispose: vi.fn(async () => {}),
     act: vi.fn((type: string, input?: unknown) => {
       actCalls.push({ type, input })
-      if (type === 'panel_set') {
-        fakeState.data.panelVisible = (input as { visible?: boolean })?.visible ?? fakeState.data.panelVisible
+      if (type === 'selectGoal') {
+        fakeState.data.activeGoalId = (input as { goalId?: string | null })?.goalId ?? null
       }
-      if (type === 'cursor_sync') {
-        fakeState.data.cursorNodeId = (input as { resolvedNodeId?: string | null })?.resolvedNodeId ?? null
+      if (type === 'applyTactic') {
+        fakeState.data.tacticResult = {
+          goalId: (input as { goalId?: string })?.goalId ?? 'g1',
+          tactic: (input as { tactic?: string })?.tactic ?? 'simp',
+          succeeded: true,
+          newGoalIds: []
+        }
       }
-      if (type === 'file_activate') {
-        fakeState.data.activeFileUri = (input as { fileUri?: string })?.fileUri ?? null
+      if (type === 'commitTactic') {
+        fakeState.data.goals.g1.status = 'resolved'
+        fakeState.data.tacticResult = null
       }
-      if (type === 'node_select') {
-        fakeState.data.selectedNodeId = (input as { nodeId?: string })?.nodeId ?? null
+      if (type === 'dismissTactic') {
+        fakeState.data.tacticResult = null
       }
       return { done: async () => {} }
     }),
     getState: vi.fn(() => fakeState),
+    subscribe: vi.fn((selector: (state: unknown) => unknown, listener: (selected: unknown) => void) => {
+      listener(selector(fakeState))
+      return () => {}
+    }),
     currentBranch: vi.fn(() => ({
       id: 'main',
       name: 'main',
-      schemaHash: 'schema',
       head: () => 'w_head',
       lineage: () => ['w_head', 'w_prev']
     })),
     getCurrentHead: vi.fn(() => 'w_head'),
-    getWorld: vi.fn(async (worldId: string) => fakeWorlds[worldId] ?? null),
-    getSnapshot: vi.fn(async (worldId: string) => fakeSnapshots[worldId] ?? null),
-    getHeads: vi.fn(async () => [
-      {
-        worldId: 'w_head',
-        branchId: 'main',
-        branchName: 'main',
-        createdAt: 1,
-        schemaHash: 'schema'
-      }
-    ]),
-    getLatestHead: vi.fn(async () => ({
-      worldId: 'w_head',
-      branchId: 'main',
-      branchName: 'main',
-      createdAt: 1,
-      schemaHash: 'schema'
+    getWorld: vi.fn(async (worldId: string) => ({
+      worldId,
+      createdAt: fakeWorlds[worldId]?.createdAt ?? 0
     })),
-    subscribe: vi.fn((selector: (state: unknown) => unknown, listener: (selected: unknown) => void) => {
-      listener(selector(fakeState))
-      return () => {}
-    })
+    getSnapshot: vi.fn(async (worldId: string) => fakeSnapshots[worldId] ?? null)
   }
 
   const createProofFlowApp = vi.fn(() => fakeApp as any)
-  const resolveNodeIdAtCursor = vi.fn(() => 'root')
 
   const window = {
     activeTextEditor: {
       document: {
         languageId: 'lean',
         uri: leanUri,
-        getText: () => 'theorem t : True := by exact True.intro'
+        getText: () => 'theorem t : True := by\n  sorry\n'
       },
       selection: {
         active: { line: 0, character: 0 }
@@ -281,27 +197,20 @@ const env = vi.hoisted(() => {
       listeners.editor.push(cb)
       return new Disposable()
     },
-    onDidChangeTextEditorSelection: (cb: (event: unknown) => unknown) => {
-      listeners.selection.push(cb)
-      return new Disposable()
-    },
     showWarningMessage: vi.fn(async () => undefined),
     showErrorMessage: vi.fn(async () => undefined)
   }
 
   const workspace = {
     workspaceFolders: [{ uri: makeUri('file:///workspace') }],
-    getConfiguration: vi.fn(() => ({
-      get: vi.fn(() => '')
-    })),
+    getConfiguration: vi.fn(() => ({ get: vi.fn(() => '') })),
     fs: {
-      readFile: vi.fn(async () => new TextEncoder().encode('domain ProofFlow { state { v: number = 1 } }'))
+      readFile: vi.fn(async () => new TextEncoder().encode('domain ProofFlow { state { x: number = 1 } }'))
     },
-    openTextDocument: vi.fn(async (uri: { path: string }) => ({
-      uri,
-      path: uri.path,
-      languageId: uri.path.endsWith('.lean') ? 'lean' : 'text',
-      getText: () => 'theorem x : True := by exact True.intro'
+    openTextDocument: vi.fn(async () => ({
+      uri: leanUri,
+      languageId: 'lean',
+      getText: () => 'theorem t : True := by\n  sorry\n'
     })),
     onDidSaveTextDocument: (cb: (document: unknown) => unknown) => {
       listeners.save.push(cb)
@@ -310,47 +219,36 @@ const env = vi.hoisted(() => {
   }
 
   const languages = {
-    getDiagnostics: vi.fn(() => []),
     onDidChangeDiagnostics: (cb: (event: unknown) => unknown) => {
       listeners.diagnostics.push(cb)
       return new Disposable()
-    }
+    },
+    getDiagnostics: vi.fn(() => [])
   }
 
-  const registerCommand = vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
-    commands.set(id, handler)
-    return new Disposable()
-  })
+  const commandsApi = {
+    registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
+      commands.set(id, handler)
+      return new Disposable()
+    })
+  }
 
   const vscodeMock = {
     window,
     workspace,
     languages,
+    commands: commandsApi,
     extensions: {
       all: [],
       getExtension: vi.fn(() => undefined)
     },
-    commands: { registerCommand },
     Uri: {
       parse: (value: string) => makeUri(value),
       file: (value: string) => makeUri(`file://${value}`),
-      joinPath: (base: { toString: () => string }, ...parts: string[]) => {
-        const joined = `${base.toString().replace(/\/$/, '')}/${parts.join('/')}`
-        return makeUri(joined)
-      }
+      joinPath: (base: { toString: () => string }, ...parts: string[]) => makeUri(`${base.toString().replace(/\/$/, '')}/${parts.join('/')}`)
     },
-    TextEditorRevealType: { InCenter: 2 },
-    DiagnosticSeverity: {
-      Error: 0,
-      Warning: 1,
-      Information: 2,
-      Hint: 3
-    },
-    Range,
-    Disposable,
-    ViewColumn: {
-      Beside: 2
-    }
+    ViewColumn: { Beside: 2 },
+    Disposable
   }
 
   class ProjectionPanelController {
@@ -359,264 +257,166 @@ const env = vi.hoisted(() => {
     readonly reveal = vi.fn(() => {
       this.open = true
     })
-    readonly dispose = vi.fn(() => {
-      this.open = false
-    })
 
-    constructor(_context: unknown, readonly actions: unknown) {
-      panelInstances.push(this)
+    constructor(
+      _context: unknown,
+      readonly actions: {
+        onSelectGoal: (goalId: string | null) => Promise<void>
+        onApplyTactic: (goalId: string, tactic: string) => Promise<void>
+        onCommitTactic: () => Promise<void>
+        onDismissTactic: () => Promise<void>
+        onTogglePanel: () => Promise<void>
+      }
+    ) {
+      panelInstances.push({ actions, instance: this })
     }
 
     isOpen(): boolean {
       return this.open
     }
+
+    dispose(): void {
+      this.open = false
+    }
   }
 
-  const selectProjectionState = vi.fn((state: any) => ({
+  const selectProjectionState = vi.fn((_state: unknown, panelVisible: boolean) => ({
     ui: {
-      panelVisible: state.data.panelVisible,
-      activeFileUri: state.data.activeFileUri,
-      selectedNodeId: state.data.selectedNodeId,
-      cursorNodeId: state.data.cursorNodeId
+      panelVisible
     },
-    activeDag: null,
-    progress: null,
+    activeFileUri: leanUri.toString(),
+    goals: [{ id: 'g1', statement: '⊢ True', status: 'open' }],
+    selectedGoal: null,
+    progress: {
+      totalGoals: 1,
+      resolvedGoals: 0,
+      openGoals: 1,
+      failedGoals: 0,
+      ratio: 0
+    },
+    isComplete: false,
+    isTacticPending: false,
+    lastTactic: null,
+    tacticResult: null,
     nodes: [],
-    selectedNode: null,
-    goalChain: [],
-    hasSorries: false,
-    sorryQueue: [],
-    hasError: false,
-    activeDiagnosis: null,
-    breakageMap: null,
-    runtimeDebug: {
-      world: {
-        headWorldId: null,
-        depth: null,
-        branchId: null
-      }
-    }
+    diagnostics: []
   }))
 
-  const reset = () => {
-    actCalls.splice(0)
-    commands.clear()
-    panelInstances.splice(0)
-    listeners.editor.splice(0)
-    listeners.save.splice(0)
-    listeners.selection.splice(0)
-    listeners.diagnostics.splice(0)
-
-    fakeState.data.panelVisible = true
-    fakeState.data.cursorNodeId = null
-    fakeState.data.selectedNodeId = null
-
-    createProofFlowApp.mockClear()
-    resolveNodeIdAtCursor.mockClear()
-    registerCommand.mockClear()
-    fakeApp.ready.mockClear()
-    fakeApp.dispose.mockClear()
-    fakeApp.act.mockClear()
-    fakeApp.getState.mockClear()
-    fakeApp.currentBranch.mockClear()
-    fakeApp.getCurrentHead.mockClear()
-    fakeApp.getWorld.mockClear()
-    fakeApp.getSnapshot.mockClear()
-    fakeApp.getHeads.mockClear()
-    fakeApp.getLatestHead.mockClear()
-    fakeApp.subscribe.mockClear()
-    workspace.fs.readFile.mockClear()
-    workspace.openTextDocument.mockClear()
-    window.showWarningMessage.mockClear()
-    window.showErrorMessage.mockClear()
-    languages.getDiagnostics.mockClear()
-    vscodeMock.extensions.getExtension.mockClear()
-  }
-
-  const fire = async (list: Array<(event: unknown) => unknown>, event: unknown) => {
-    for (const listener of list) {
-      await listener(event)
-    }
-  }
-
-  const wait = async (ms: number) => {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, ms)
-    })
-  }
+  const createVscodeProofFlowEffects = vi.fn(() => ({
+    'lean.syncGoals': async () => [],
+    'lean.applyTactic': async () => []
+  }))
 
   return {
-    leanUri,
-    textUri,
     vscodeMock,
     createProofFlowApp,
-    resolveNodeIdAtCursor,
-    selectProjectionState,
+    createVscodeProofFlowEffects,
     ProjectionPanelController,
-    fireEditorChange: (event: unknown) => fire(listeners.editor, event),
-    fireSave: (event: unknown) => fire(listeners.save, event),
-    fireSelection: (event: unknown) => fire(listeners.selection, event),
-    fireDiagnostics: (event: unknown) => fire(listeners.diagnostics, event),
-    wait,
-    getActCalls: () => [...actCalls],
-    getCommand: (id: string) => commands.get(id),
-    getPanel: () => panelInstances[0],
-    fakeState,
+    selectProjectionState,
+    leanUri,
+    listeners,
+    commands,
+    panelInstances,
+    actCalls,
     fakeApp,
-    reset
+    reset: () => {
+      listeners.editor.length = 0
+      listeners.save.length = 0
+      listeners.diagnostics.length = 0
+      commands.clear()
+      panelInstances.length = 0
+      actCalls.length = 0
+      fakeState.data.activeGoalId = null
+      fakeState.data.goals.g1.status = 'open'
+      fakeState.data.tacticResult = null
+      createProofFlowApp.mockClear()
+      createVscodeProofFlowEffects.mockClear()
+      selectProjectionState.mockClear()
+      fakeApp.ready.mockClear()
+      fakeApp.dispose.mockClear()
+      fakeApp.act.mockClear()
+      fakeApp.getState.mockClear()
+      fakeApp.subscribe.mockClear()
+      fakeApp.currentBranch.mockClear()
+      fakeApp.getWorld.mockClear()
+      fakeApp.getSnapshot.mockClear()
+    },
+    getCommand: (id: string) => commands.get(id),
+    getPanel: () => panelInstances.at(-1),
+    getActCalls: () => [...actCalls]
   }
 })
 
-vi.mock('vscode', () => env.vscodeMock as any)
-vi.mock('../packages/app/src/config.js', () => ({
-  createProofFlowApp: env.createProofFlowApp
-}))
-vi.mock('@proof-flow/host', () => ({
-  createProofFlowEffects: () => ({}),
-  resolveNodeIdAtCursor: env.resolveNodeIdAtCursor
+vi.mock('vscode', () => env.vscodeMock)
+vi.mock('../packages/app/src/config.js', () => ({ createProofFlowApp: env.createProofFlowApp }))
+vi.mock('../packages/app/src/effects-adapter.js', () => ({
+  createVscodeProofFlowEffects: env.createVscodeProofFlowEffects,
+  isLeanDocument: (document: { languageId?: string; uri?: { path?: string } }) => (
+    document.languageId === 'lean' || document.uri?.path?.endsWith('.lean')
+  ),
+  isLeanUri: (uri: { path?: string }) => uri.path?.endsWith('.lean') ?? false
 }))
 vi.mock('../packages/app/src/webview-panel.js', () => ({
   ProjectionPanelController: env.ProjectionPanelController,
   selectProjectionState: env.selectProjectionState
 }))
 
-describe('Extension E2E flow (v2)', () => {
+describe('Extension E2E flow (hard-cut)', () => {
   beforeEach(async () => {
     env.reset()
-    vi.resetModules()
+    const mod = await import('../packages/app/src/extension.js')
+    await mod.activate({
+      extensionUri: env.vscodeMock.Uri.parse('file:///extension'),
+      subscriptions: []
+    } as any)
   })
 
-  it('dispatches editor/save/diagnostics/selection events through app.act', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
+  it('runs startup syncGoals and syncs on editor/save/diagnostics events', async () => {
+    expect(env.getActCalls().map((call) => call.type)).toContain('syncGoals')
 
-    await extension.activate(context as any)
+    await env.listeners.save[0]?.({ languageId: 'lean', uri: env.leanUri })
+    await env.listeners.editor[0]?.({ document: { languageId: 'lean', uri: env.leanUri } })
+    await env.listeners.diagnostics[0]?.({ uris: [env.leanUri] })
 
-    const initialTypes = env.getActCalls().map((call) => call.type)
-    expect(initialTypes).toContain('file_activate')
-    expect(initialTypes).toContain('dag_sync')
-
-    await env.fireEditorChange({
-      document: { languageId: 'lean', uri: env.leanUri }
-    })
-    await env.fireSave({ languageId: 'lean', uri: env.leanUri })
-    await env.fireDiagnostics({ uris: [env.leanUri, env.textUri] })
-    await env.fireSelection({
-      textEditor: {
-        document: { languageId: 'lean', uri: env.leanUri }
-      },
-      selections: [{ active: { line: 0, character: 2 } }]
-    })
-
-    await env.wait(450)
-    const types = env.getActCalls().map((call) => call.type)
-
-    expect(types.filter((type) => type === 'file_activate').length).toBeGreaterThanOrEqual(2)
-    expect(types.filter((type) => type === 'dag_sync').length).toBeGreaterThanOrEqual(2)
-    expect(types).toContain('cursor_sync')
-    expect(types).toContain('sorry_queue_refresh')
-    expect(types).toContain('breakage_analyze')
-
-    const panel = env.getPanel()
-    expect(panel).toBeDefined()
-    expect(panel.setState).toHaveBeenCalled()
-
-    await extension.deactivate()
-    expect(env.fakeApp.dispose).toHaveBeenCalledTimes(1)
+    const syncCalls = env.getActCalls().filter((call) => call.type === 'syncGoals')
+    expect(syncCalls.length).toBeGreaterThanOrEqual(4)
   })
 
-  it('handles toggle command by reveal-first then panel_set', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-    await extension.activate(context as any)
-
+  it('toggles panel visibility through command and reveal', async () => {
     const command = env.getCommand('proof-flow.hello')
+    const panel = env.getPanel()?.instance
     expect(command).toBeTypeOf('function')
 
-    const panel = env.getPanel()
-    const callCountBefore = env.getActCalls().length
-
     await command?.()
+    await command?.()
+
     expect(panel.reveal).toHaveBeenCalledTimes(1)
-    expect(env.getActCalls().length).toBe(callCountBefore)
-
-    await command?.()
-    const callTypes = env.getActCalls().map((call) => call.type)
-    expect(callTypes).toContain('panel_set')
+    const lastSetState = panel.setState.mock.calls.at(-1)?.[0]
+    expect(lastSetState?.ui.panelVisible).toBe(true)
   })
 
-  it('returns world heads snapshot from command', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-    await extension.activate(context as any)
-
-    const snapshotCommand = env.getCommand('proof-flow.worldHeadsSnapshot')
-    expect(snapshotCommand).toBeTypeOf('function')
-
-    const snapshot = await snapshotCommand?.()
-    expect(snapshot).toMatchObject({
-      current: {
-        branchId: 'main',
-        headWorldId: 'w_head',
-        lineageLength: 2
-      },
-      stateSummary: {
-        fileCount: 1,
-        dagNodeCount: 1
-      }
-    })
-  })
-
-  it('returns lineage diff report with node/status/goal deltas', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-    await extension.activate(context as any)
-
+  it('returns lineage diff report based on goal status transitions', async () => {
     const command = env.getCommand('proof-flow.lineageDiffReport')
-    expect(command).toBeTypeOf('function')
+    const report = await command?.({ limit: 8 })
 
-    const report = await command?.({
-      fileUri: env.leanUri.toString(),
-      limit: 16
+    expect(report.summary).toMatchObject({
+      edges: 1,
+      statusChanged: 1
     })
-
-    expect(report).toMatchObject({
-      fileUri: env.leanUri.toString(),
-      summary: {
-        edges: 1,
-        added: 1,
-        removed: 0,
-        statusChanged: 1,
-        goalChanged: 1
-      }
-    })
-
-    expect(report?.diffs?.[0]?.addedNodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ nodeId: 'n2' })
-      ])
-    )
-    expect(report?.diffs?.[0]?.statusChanges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ nodeId: 'n1', fromStatus: 'sorry', toStatus: 'resolved' })
-      ])
-    )
-    expect(report?.diffs?.[0]?.goalChanges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ nodeId: 'n1', fromGoal: 'goal-before', toGoal: 'goal-after' })
-      ])
-    )
+    expect(report.diffs[0]?.statusChanges[0]?.toStatus).toBe('resolved')
   })
 
-  it('dispatches node_select from panel action', async () => {
-    const extension = await import('../packages/app/src/extension.ts')
-    const context = { subscriptions: [] as Array<{ dispose: () => void }> }
-    await extension.activate(context as any)
+  it('dispatches panel actions into app.act', async () => {
+    const panel = env.getPanel()
+    await panel?.actions.onSelectGoal('g1')
+    await panel?.actions.onApplyTactic('g1', 'simp')
+    await panel?.actions.onCommitTactic()
+    await panel?.actions.onDismissTactic()
 
-    const panel = env.getPanel() as { actions: { onNodeSelect: (nodeId: string) => Promise<void> } }
-    await panel.actions.onNodeSelect('root')
-
-    const nodeSelectCall = env.getActCalls().findLast((call) => call.type === 'node_select')
-    expect(nodeSelectCall?.input).toMatchObject({ nodeId: 'root' })
+    const types = env.getActCalls().map((call) => call.type)
+    expect(types).toContain('selectGoal')
+    expect(types).toContain('applyTactic')
+    expect(types).toContain('commitTactic')
+    expect(types).toContain('dismissTactic')
   })
 })

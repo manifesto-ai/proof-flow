@@ -3,16 +3,69 @@ import type { AppState } from '@manifesto-ai/app'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { selectProjectionState } from '../packages/app/src/projection-state.js'
 
-const baseData = (): ProofFlowState => ({
-  appVersion: '2.0.0',
-  files: {},
-  activeFileUri: 'file:///proof.lean',
-  selectedNodeId: 'child',
-  cursorNodeId: 'root',
-  panelVisible: true,
-  sorryQueue: null,
-  breakageMap: null,
-  activeDiagnosis: null
+const baseData = (): ProofFlowState & Record<string, unknown> => ({
+  goals: {
+    g1: { id: 'g1', statement: '⊢ True', status: 'open' },
+    g2: { id: 'g2', statement: '⊢ False', status: 'failed' }
+  },
+  activeGoalId: 'g1',
+  lastTactic: null,
+  tacticResult: null,
+  applyingTactic: null,
+  resolvingGoal: null,
+  syncingGoals: null,
+  $host: {
+    leanState: {
+      fileUri: 'file:///proof.lean',
+      dag: {
+        nodes: {
+          root: {
+            nodeId: 'root',
+            label: 'file:///proof.lean',
+            kind: 'definition',
+            startLine: 1,
+            endLine: 20,
+            parentId: null,
+            status: 'in_progress',
+            errorMessage: null,
+            errorCategory: null,
+            goalId: null
+          },
+          n1: {
+            nodeId: 'n1',
+            label: 'theorem t : True := by',
+            kind: 'theorem',
+            startLine: 2,
+            endLine: 4,
+            parentId: 'root',
+            status: 'sorry',
+            errorMessage: null,
+            errorCategory: null,
+            goalId: 'g1'
+          },
+          n2: {
+            nodeId: 'n2',
+            label: 'diagnostic: type mismatch',
+            kind: 'diagnostic',
+            startLine: 7,
+            endLine: 7,
+            parentId: 'root',
+            status: 'error',
+            errorMessage: 'type mismatch',
+            errorCategory: 'TYPE_MISMATCH',
+            goalId: 'g2'
+          }
+        },
+        edges: [
+          { source: 'root', target: 'n1' },
+          { source: 'root', target: 'n2' }
+        ]
+      },
+      diagnostics: [],
+      goalPositions: {},
+      lastElaboratedAt: 1
+    }
+  }
 })
 
 const makeState = (overrides?: Partial<AppState<unknown>>): AppState<unknown> => ({
@@ -35,161 +88,56 @@ const makeState = (overrides?: Partial<AppState<unknown>>): AppState<unknown> =>
 })
 
 describe('Projection selector', () => {
-  it('projects active dag with progress, goal chain, and derived sorry queue', () => {
-    const state = makeState({
-      data: {
-        ...baseData(),
-        selectedNodeId: 'child',
-        cursorNodeId: 'root'
-      },
-      computed: {
-        'computed.activeDag': {
-          fileUri: 'file:///proof.lean',
-          rootIds: ['root'],
-          extractedAt: 1,
-          progress: {
-            totalGoals: 2,
-            resolvedGoals: 0,
-            blockedGoals: 1,
-            sorryGoals: 1,
-            estimatedRemaining: 3
-          },
-          nodes: {
-            root: {
-              id: 'root',
-              kind: 'theorem',
-              label: 'root',
-              leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-              goalCurrent: null,
-              goalSnapshots: [],
-              estimatedDistance: 0,
-              status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-              children: ['child', 'todo'],
-              dependencies: []
-            },
-            child: {
-              id: 'child',
-              kind: 'have',
-              label: 'child',
-              leanRange: { startLine: 4, startCol: 2, endLine: 4, endCol: 20 },
-              goalCurrent: '⊢ Nat = Bool',
-              goalSnapshots: [{
-                before: '⊢ Nat = Bool',
-                after: null,
-                tactic: 'simp',
-                appliedLemmas: ['Nat.add_assoc'],
-                subgoalsCreated: 1
-              }],
-              estimatedDistance: 2,
-              status: { kind: 'error', errorMessage: 'type mismatch', errorCategory: 'TYPE_MISMATCH' },
-              children: [],
-              dependencies: ['root']
-            },
-            todo: {
-              id: 'todo',
-              kind: 'sorry',
-              label: 'todo',
-              leanRange: { startLine: 6, startCol: 2, endLine: 6, endCol: 8 },
-              goalCurrent: '⊢ True',
-              goalSnapshots: [],
-              estimatedDistance: 1,
-              status: { kind: 'sorry', errorMessage: null, errorCategory: 'OTHER' },
-              children: [],
-              dependencies: ['root']
-            }
-          }
-        }
-      }
-    })
+  it('projects domain goals and host dag nodes', () => {
+    const projection = selectProjectionState(makeState(), true)
 
-    const projection = selectProjectionState(state)
-    expect(projection.activeDag?.totalNodes).toBe(3)
+    expect(projection.ui.panelVisible).toBe(true)
+    expect(projection.activeFileUri).toBe('file:///proof.lean')
     expect(projection.progress).toMatchObject({
       totalGoals: 2,
-      blockedGoals: 1,
-      sorryGoals: 1
+      openGoals: 1,
+      failedGoals: 1
     })
-    expect(projection.nodes.map((node) => node.id)).toEqual(['root', 'child', 'todo'])
-    expect(projection.selectedNode?.id).toBe('child')
-    expect(projection.goalChain).toHaveLength(1)
-    expect(projection.hasSorries).toBe(true)
-    expect(projection.sorryQueue[0]?.nodeId).toBe('todo')
+    expect(projection.selectedGoal?.id).toBe('g1')
+    expect(projection.nodes.map((node) => node.id)).toEqual(['n1', 'n2'])
   })
 
-  it('prefers explicit diagnosis and breakage map from state', () => {
+  it('reads computed pending flag and tactic result', () => {
     const projection = selectProjectionState(makeState({
       data: {
         ...baseData(),
-        activeDiagnosis: {
-          nodeId: 'child',
-          errorCategory: 'TYPE_MISMATCH',
-          rawMessage: 'type mismatch',
-          expected: 'Nat',
-          actual: 'Bool',
-          mismatchPath: 'at argument 2',
-          hint: 'Check local hypotheses',
-          suggestedTactic: 'exact ih'
-        },
-        breakageMap: {
-          edges: [{
-            changedNodeId: 'helper',
-            brokenNodeId: 'child',
-            errorCategory: 'TYPE_MISMATCH',
-            errorMessage: 'type mismatch'
-          }],
-          lastAnalyzedAt: 10
+        tacticResult: {
+          goalId: 'g1',
+          tactic: 'simp',
+          succeeded: false,
+          newGoalIds: []
         }
-      }
-    }))
-
-    expect(projection.hasError).toBe(true)
-    expect(projection.activeDiagnosis?.nodeId).toBe('child')
-    expect(projection.breakageMap?.edges).toHaveLength(1)
-  })
-
-  it('falls back to unresolved focus when selected node is absent', () => {
-    const projection = selectProjectionState(makeState({
-      data: {
-        ...baseData(),
-        selectedNodeId: null,
-        cursorNodeId: null
       },
       computed: {
-        'computed.activeDag': {
-          fileUri: 'file:///proof.lean',
-          rootIds: ['root'],
-          extractedAt: 1,
-          progress: null,
-          nodes: {
-            root: {
-              id: 'root',
-              kind: 'theorem',
-              label: 'root',
-              leanRange: { startLine: 1, startCol: 0, endLine: 1, endCol: 10 },
-              goalCurrent: null,
-              goalSnapshots: [],
-              estimatedDistance: 0,
-              status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-              children: ['err'],
-              dependencies: []
-            },
-            err: {
-              id: 'err',
-              kind: 'have',
-              label: 'err',
-              leanRange: { startLine: 2, startCol: 2, endLine: 2, endCol: 10 },
-              goalCurrent: '⊢ False',
-              goalSnapshots: [],
-              estimatedDistance: 1,
-              status: { kind: 'error', errorMessage: 'boom', errorCategory: 'OTHER' },
-              children: [],
-              dependencies: ['root']
-            }
-          }
-        }
+        'computed.isTacticPending': true
       }
-    }))
+    }), false)
 
-    expect(projection.selectedNode?.id).toBe('err')
+    expect(projection.ui.panelVisible).toBe(false)
+    expect(projection.isTacticPending).toBe(true)
+    expect(projection.tacticResult?.tactic).toBe('simp')
+  })
+
+  it('falls back safely when $host.leanState is missing', () => {
+    const projection = selectProjectionState(makeState({
+      data: {
+        goals: {},
+        activeGoalId: null,
+        lastTactic: null,
+        tacticResult: null,
+        applyingTactic: null,
+        resolvingGoal: null,
+        syncingGoals: null
+      }
+    }), true)
+
+    expect(projection.activeFileUri).toBeNull()
+    expect(projection.nodes).toEqual([])
+    expect(projection.progress.totalGoals).toBe(0)
   })
 })

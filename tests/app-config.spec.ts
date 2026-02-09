@@ -16,32 +16,35 @@ afterEach(async () => {
 })
 
 describe('ProofFlow app config', () => {
-  it('keeps required v2 root fields after file activation', async () => {
+  it('initializes v2 root fields and runs syncGoals', async () => {
     const schema = await domainMelPromise
 
     const app = createProofFlowApp({
       schema,
       effects: {
-        'proof_flow.dag.extract': async () => [],
-        'proof_flow.editor.reveal': async () => [],
-        'proof_flow.editor.getCursor': async () => [],
-        'proof_flow.diagnose': async () => [],
-        'proof_flow.sorry.analyze': async () => [],
-        'proof_flow.breakage.analyze': async () => []
+        'lean.syncGoals': async (params) => {
+          const into = (params as { into: string }).into
+          return [{
+            op: 'set',
+            path: into,
+            value: {
+              g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+            }
+          }]
+        },
+        'lean.applyTactic': async () => []
       }
     })
 
     await app.ready()
     apps.push(app)
 
-    await app.act('file_activate', { fileUri: 'file:///proof.lean' }).done()
+    await app.act('syncGoals').done()
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.appVersion).toBe('2.0.0')
-    expect(state.data.files).toEqual({})
-    expect(state.data.activeFileUri).toBe('file:///proof.lean')
-    expect(state.data.selectedNodeId).toBeNull()
-    expect(state.data.cursorNodeId).toBeNull()
-    expect(state.data.panelVisible).toBe(true)
+    expect(state.data.goals.g1?.status).toBe('open')
+    expect(state.data.activeGoalId).toBeNull()
+    expect(state.data.lastTactic).toBeNull()
+    expect(state.data.tacticResult).toBeNull()
   })
 })

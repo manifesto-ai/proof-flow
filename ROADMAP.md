@@ -1,90 +1,79 @@
-# ProofFlow Roadmap (v2 Hard-Cut)
+# ProofFlow Roadmap (Manifesto-Native Hard-Cut)
 
 ## Snapshot (2026-02-09)
-- 현재 기준은 `v2 hard-cut`이며, v0.x attempt/pattern/suggestion/history 계층은 제거됨.
-- 제품 초점은 `증명의 GPS`: 현재 위치(Proof Map) + 다음 작업(Goal Diff/Diagnosis/Sorry Queue) 제공.
-- Manifesto 연동은 `projection-only` 원칙 유지(도메인 정책은 MEL/Host에서만 처리).
+- 아키텍처 기준: `packages/schema + packages/host + packages/app` 인플레이스 하드컷.
+- 도메인(MEL)은 `Goal/Tactic` 의미만 유지.
+- Lean/LSP/DAG/진단/위치는 `$host.leanState`로 격리.
+- UI는 증명 작업 흐름(Progress/Goal/Tactic/Proof Map) 중심으로 최소화.
 
-## Current Scope
-### In Scope
-- Flattened MEL state/action contract
-  - state: `files`, `activeFileUri`, `selectedNodeId`, `cursorNodeId`, `panelVisible`, `sorryQueue`, `breakageMap`, `activeDiagnosis`
-  - action: `file_activate`, `node_select`, `cursor_sync`, `panel_set`, `dag_sync`, `sorry_queue_refresh`, `breakage_analyze`, `diagnose`, `diagnosis_dismiss`
-- Host effects (core IO only)
-  - `proof_flow.dag.extract`
-  - `proof_flow.editor.reveal`
-  - `proof_flow.editor.getCursor`
-  - `proof_flow.diagnose`
-  - `proof_flow.sorry.analyze`
-  - `proof_flow.breakage.analyze`
-- Webview UI
-  - ReactFlow 기반 Proof Map
-  - Progress/Goal Diff/Diagnosis/Sorry Queue 중심 구성
-  - Extension 메시지 계약 최소화(`nodeClick`, `togglePanel` -> `stateUpdate`)
+## Active Contracts (v2)
+### MEL actions
+- `syncGoals`
+- `applyTactic(goalId, tactic)`
+- `commitTactic`
+- `dismissTactic`
+- `selectGoal(goalId | null)`
 
-### Out of Scope (Removed)
-- `attempt_record`, `attempt_apply`, `attempt_suggest`
-- `history`, `patterns`, `suggestions` 상태/리셋 커맨드
-- attempt 기반 통계 루프(`g0/g1/suggestion-loop`, replay metrics 중심 실험)
-- WorldStore 전용 커스텀 계층
+### MEL state
+- `goals`
+- `activeGoalId`
+- `lastTactic`
+- `tacticResult`
+- `applyingTactic`
+- `resolvingGoal`
+- `syncingGoals`
 
-## Completed (v2.0)
-- [x] MEL 도메인 하드컷(중첩 `ui` 제거, 루트 state 평탄화)
-- [x] Schema 타입 하드컷(v1/v0.x 타입 제거)
-- [x] Host effect registry 정리(attempt 계열 제거)
-- [x] DAG schema/parser 정리(`metrics`, legacy `goal` 제거; `goalCurrent + goalSnapshots + progress` 고정)
-- [x] Extension/Panel 계약 단순화
-- [x] Webview 구성 정리(핵심 패널 중심)
-- [x] 테스트 스위트 v2 기준 재작성
+### Host effects
+- `lean.syncGoals({ into })`
+- `lean.applyTactic({ goalId, tactic, into })`
+
+### Panel message contract
+- panel -> extension: `selectGoal`, `applyTactic`, `commitTactic`, `dismissTactic`, `togglePanel`
+- extension -> panel: `stateUpdate`
+
+### VS Code commands
+- 유지: `proof-flow.hello`, `proof-flow.lineageDiffReport`
+- 제거 완료: `dag_sync/sorry_queue_refresh/breakage_analyze/diagnose` 및 연계 커맨드/분기
+
+## Completed
+- [x] `domain.mel` 하드컷 (Goal/Tactic 중심)
+- [x] schema 타입 재정의 (`Goal`, `TacticResult`, `ProofFlowState`)
+- [x] host effect registry 하드컷 (`lean.*` 2개만 유지)
+- [x] legacy `proof_flow.*` effect 구현 삭제
+- [x] Lean 파생 로직 재정리 (`derive.ts`, stable goal id/host dag 구성)
+- [x] extension 이벤트 파이프라인 단순화 (`syncGoals` 중심)
+- [x] panel/webview 계약 단순화 및 최소 UX로 축소
+- [x] lineage diff 리포트 포맷을 goal 상태 전이 중심으로 교체
+- [x] 테스트 스위트 하드컷 기준 재작성
 - [x] 품질 게이트 통과
-  - `pnpm typecheck`
   - `pnpm test`
+  - `pnpm typecheck`
   - `pnpm build`
   - `pnpm test:smoke:vscode`
-- [x] 리포트/로컬 산출물 ignore 정책 정리(`.gitignore` + reports untrack)
 
-## Next Milestones
-### v2.1 Proof Workflow Validation (P0)
-- [ ] 실제 Lean/Mathlib 증명 시나리오 3종 확정 및 회귀 테스트화
-  - 단순 정리
-  - 중간 난이도(induction/cases)
-  - Mathlib import 의존 정리
-- [ ] `dag_sync -> panel stateUpdate` 반응성 계측(저장/진단 이벤트 기준)
-- [ ] Goal fidelity 리그레션 가드 추가
-  - `goalCurrent` null 비율
-  - Mathlib 샘플에서 stable source/ fallback 점유율 추적
-- [ ] `panel_set`/selection 동기화 E2E 강화(패널 open/close 및 reveal 동작)
+## Remaining Work
+### P0 (증명 사용성 필수)
+- [ ] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정
+- [ ] tactic 실패 UX 정교화 (실패 이유 + 다음 액션 안내를 카드 1개로 통합)
+- [ ] goal id 안정성 회귀 테스트 강화 (편집/저장 반복 시 동일 goal 매핑 보장)
+- [ ] `lineageDiffReport`를 증명 세션 리포트 템플릿으로 정리
 
-### v2.2 UX Refinement (P1)
-- [ ] 패널 정보 밀도 축소
-  - 기본 화면: Progress + Proof Map
-  - 조건부: Goal Diff(선택 시), Diagnosis(에러 선택 시), Sorry Queue(sorry 존재 시)
-- [ ] 스크롤/레이아웃 안정화(긴 증명 파일에서 panel 사용성 보장)
-- [ ] Analyze/Debug 노출 전략 분리(기본 숨김 + 개발 모드 토글)
+### P1 (UI/UX 정돈)
+- [ ] 패널 스크롤/레이아웃 안정화 (긴 증명에서 항상 조작 가능)
+- [ ] Proof Map 노드 선택/에디터 reveal 동기화 회귀 E2E 추가
+- [ ] 기본 화면 정보 밀도 추가 축소 (증명에 직접 필요한 정보만 유지)
 
-### v2.3 Proof Intelligence (P1)
-- [ ] GoalSnapshot 품질 향상
-  - tactic 전후 diff 신뢰도 개선
-  - applied lemma 수집 정확도 개선
-- [ ] Diagnosis 규칙 개선
-  - `TYPE_MISMATCH`, `UNSOLVED_GOALS` 메시지 구조화 품질 향상
-- [ ] BreakageMap 신뢰도 개선
-  - dependency edge 기준 false-positive 감소
+### P2 (운영/확장)
+- [ ] 리포트 export 경로/포맷 표준화 (CI artifact로도 수집 가능하게)
+- [ ] 단일 파일 범위 밖(멀티파일) 확장 전 선행 제약 문서화
+- [ ] World store 영속화는 옵션으로만 실험 (기본 메모리 유지)
 
-### v2.4 Ops / Governance (P2)
-- [ ] CI 게이트 재정렬
-  - 코어 파이프라인 중심 스위트 고정
-  - 제거된 v0.x 시나리오 관련 스크립트/문서 정리
-- [ ] Manifesto core 연동 리스크 모니터링 지속
-  - `core#108`, `core#109` 추적
-  - 에스컬레이션 기준 문서화
+## Risks
+1. Lean diagnostics 타이밍 지연으로 `syncGoals` 반응성이 흔들릴 수 있음.
+2. Mathlib 파일에서 goal 추출 안정성이 떨어지면 Proof Map 신뢰도 저하.
+3. intent marker(`applying/resolving/syncing`)는 실행 추적에는 유효하지만 비교 테스트에서는 노이즈가 될 수 있음.
 
-## Active Risks
-1. Mathlib 환경에서 stable goal source 가용성 변동.
-2. Lean diagnostics 타이밍에 따른 panel 반응 지연/누락 가능성.
-3. GoalSnapshot 데이터 품질이 낮으면 UX 가치가 급감할 수 있음.
-
-## Immediate Queue (다음 작업 순서)
-1. v2.1 시나리오 3종 회귀 테스트 추가.
-2. 패널 조건부 렌더 규칙을 강제하는 UI 테스트 추가.
-3. Goal fidelity 지표를 리포트 JSON 대신 테스트 assertion으로 내재화.
+## Immediate Queue
+1. Lean 샘플 3종 회귀 픽스처 확정.
+2. tactic 실패 UX 카드 통합.
+3. Proof Map 선택-에디터 동기화 E2E 추가.

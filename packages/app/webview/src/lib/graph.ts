@@ -4,6 +4,7 @@ type LayoutDirection = 'topDown' | 'leftRight'
 
 export type GraphNode = {
   id: string
+  goalId: string | null
   label: string
   kind: ProjectionNode['kind']
   statusKind: ProjectionNode['statusKind']
@@ -140,6 +141,7 @@ const toPositionedNodes = (input: {
 
       nodes.push({
         id: node.id,
+        goalId: node.goalId,
         label: node.label,
         kind: node.kind,
         statusKind: node.statusKind,

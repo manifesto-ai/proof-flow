@@ -1,87 +1,61 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ProofDAG } from '../packages/schema/src/index.js'
-import { createDagExtractEffect } from '../packages/host/src/effects/dag-extract.js'
-import { createEditorRevealEffect } from '../packages/host/src/effects/editor-reveal.js'
-import {
-  createEditorGetCursorEffect,
-  resolveNodeIdAtCursor
-} from '../packages/host/src/effects/cursor-get.js'
-import { createDiagnoseEffect } from '../packages/host/src/effects/diagnose.js'
-import { createSorryAnalyzeEffect } from '../packages/host/src/effects/sorry-analyze.js'
-import { createBreakageAnalyzeEffect } from '../packages/host/src/effects/breakage-analyze.js'
+import { createLeanApplyTacticEffect } from '../packages/host/src/effects/lean-apply-tactic.js'
+import { createLeanSyncGoalsEffect } from '../packages/host/src/effects/lean-sync-goals.js'
 
-const fileUri = 'file:///proof.lean'
+describe('Host effects (lean.*)', () => {
+  it('lean.syncGoals writes domain goals and $host.leanState', async () => {
+    const effect = createLeanSyncGoalsEffect({
+      loadContext: async () => ({
+        fileUri: 'file:///proof.lean',
+        sourceText: 'theorem t : True := by\n  sorry\n',
+        diagnostics: []
+      }),
+      now: () => 123
+    })
 
-const makeDag = (): ProofDAG => ({
-  fileUri,
-  rootIds: ['root'],
-  nodes: {
-    root: {
-      id: 'root',
-      kind: 'theorem',
-      label: 'root',
-      leanRange: { startLine: 1, startCol: 0, endLine: 10, endCol: 80 },
-      goalCurrent: null,
-      goalSnapshots: [],
-      estimatedDistance: 0,
-      status: { kind: 'in_progress', errorMessage: null, errorCategory: null },
-      children: ['child', 'todo'],
-      dependencies: []
-    },
-    child: {
-      id: 'child',
-      kind: 'lemma',
-      label: 'child',
-      leanRange: { startLine: 3, startCol: 2, endLine: 4, endCol: 30 },
-      goalCurrent: '⊢ Nat = Bool',
-      goalSnapshots: [],
-      estimatedDistance: 2,
-      status: { kind: 'error', errorMessage: 'type mismatch', errorCategory: 'TYPE_MISMATCH' },
-      children: [],
-      dependencies: ['root']
-    },
-    todo: {
-      id: 'todo',
-      kind: 'sorry',
-      label: 'todo',
-      leanRange: { startLine: 6, startCol: 2, endLine: 6, endCol: 14 },
-      goalCurrent: '⊢ True',
-      goalSnapshots: [],
-      estimatedDistance: 1,
-      status: { kind: 'sorry', errorMessage: null, errorCategory: 'OTHER' },
-      children: [],
-      dependencies: ['child']
-    }
-  },
-  extractedAt: 123,
-  progress: {
-    totalGoals: 2,
-    resolvedGoals: 0,
-    blockedGoals: 1,
-    sorryGoals: 1,
-    estimatedRemaining: 3
-  }
-})
+    const patches = await effect({ into: 'goals' }, {})
 
-describe('Host effects (v2 core)', () => {
-  it('dag.extract merges files entry and preserves previous fields', async () => {
-    const dag = makeDag()
-    const effect = createDagExtractEffect({
-      extractDag: async () => dag,
-      now: () => 999
+    expect(patches).toHaveLength(2)
+    expect(patches[0]).toMatchObject({ op: 'set', path: 'goals' })
+    expect(patches[1]).toMatchObject({ op: 'set', path: '$host.leanState' })
+
+    const goals = (patches[0] as { value: Record<string, { status: string }> }).value
+    expect(Object.keys(goals).length).toBeGreaterThan(0)
+    expect(Object.values(goals)[0]?.status).toBe('open')
+  })
+
+  it('lean.applyTactic returns succeeded result and host refresh patch', async () => {
+    const applyTactic = vi.fn(async () => ({ succeeded: true }))
+
+    const effect = createLeanApplyTacticEffect({
+      loadContext: async () => ({
+        fileUri: 'file:///proof.lean',
+        sourceText: 'theorem t : True := by\n  exact True.intro\n',
+        diagnostics: []
+      }),
+      applyTactic,
+      now: () => 456
     })
 
     const patches = await effect(
-      { fileUri },
+      { goalId: 'g1', tactic: 'exact True.intro', into: 'tacticResult' },
       {
         snapshot: {
           data: {
-            files: {
-              [fileUri]: {
-                fileUri,
-                dag: null,
-                lastSyncedAt: 1,
-                keepMe: true
+            goals: {
+              g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+            },
+            $host: {
+              leanState: {
+                fileUri: 'file:///proof.lean',
+                goalPositions: {
+                  g1: {
+                    startLine: 2,
+                    startCol: 2,
+                    endLine: 2,
+                    endCol: 7
+                  }
+                }
               }
             }
           }
@@ -89,131 +63,38 @@ describe('Host effects (v2 core)', () => {
       }
     )
 
-    expect(patches).toEqual([{
-      op: 'merge',
-      path: 'files',
-      value: {
-        [fileUri]: {
-          fileUri,
-          dag,
-          lastSyncedAt: 999,
-          keepMe: true
-        }
-      }
-    }])
+    expect(applyTactic).toHaveBeenCalledTimes(1)
+    expect(patches[0]).toMatchObject({ op: 'set', path: 'tacticResult' })
+    expect((patches[0] as { value: { succeeded: boolean } }).value.succeeded).toBe(true)
+    expect(patches.some((patch) => patch.path === '$host.leanState')).toBe(true)
   })
 
-  it('editor.reveal resolves node range from snapshot and calls adapter', async () => {
-    const reveal = vi.fn(async () => {})
-    const effect = createEditorRevealEffect({ reveal })
-    const dag = makeDag()
-
-    const patches = await effect(
-      { fileUri, nodeId: 'child' },
-      { snapshot: { data: { files: { [fileUri]: { dag } } } } }
-    )
-
-    expect(patches).toEqual([])
-    expect(reveal).toHaveBeenCalledTimes(1)
-    expect(reveal).toHaveBeenCalledWith({
-      fileUri,
-      range: dag.nodes.child.leanRange
-    })
-  })
-
-  it('editor.getCursor patches root cursorNodeId', async () => {
-    const dag = makeDag()
-    const effect = createEditorGetCursorEffect({
-      getCursor: async () => ({
-        fileUri,
-        position: { line: 3, column: 10 }
+  it('lean.applyTactic converts adapter failure into succeeded=false result', async () => {
+    const effect = createLeanApplyTacticEffect({
+      loadContext: async () => null,
+      applyTactic: async () => ({
+        succeeded: false,
+        errorMessage: 'TARGET_NOT_FOUND'
       })
     })
 
-    const patches = await effect({}, {
-      snapshot: {
-        data: {
-          files: { [fileUri]: { dag } }
-        }
-      }
-    })
-
-    expect(patches).toEqual([{
-      op: 'set',
-      path: 'cursorNodeId',
-      value: 'child'
-    }])
-  })
-
-  it('resolveNodeIdAtCursor returns null when no range contains cursor', () => {
-    const dag = makeDag()
-    const nodeId = resolveNodeIdAtCursor(dag, {
-      fileUri,
-      position: { line: 50, column: 1 }
-    })
-    expect(nodeId).toBeNull()
-  })
-
-  it('diagnose writes activeDiagnosis for error nodes', async () => {
-    const effect = createDiagnoseEffect()
-    const patches = await effect({
-      fileUri,
-      nodeId: 'child'
-    }, {
-      snapshot: {
-        data: {
-          files: {
-            [fileUri]: { dag: makeDag() }
+    const patches = await effect(
+      { goalId: 'g1', tactic: 'simp', into: 'tacticResult' },
+      {
+        snapshot: {
+          data: {
+            $host: {
+              leanState: {
+                fileUri: 'file:///proof.lean',
+                goalPositions: {}
+              }
+            }
           }
         }
       }
-    })
-
-    expect(patches[0]?.op).toBe('set')
-    expect((patches[0] as { path: string }).path).toBe('activeDiagnosis')
-    expect((patches[0] as { value: any }).value.nodeId).toBe('child')
-    expect((patches[0] as { value: any }).value.errorCategory).toBe('TYPE_MISMATCH')
-  })
-
-  it('sorry.analyze uses activeFileUri and builds priority queue', async () => {
-    const effect = createSorryAnalyzeEffect()
-    const patches = await effect({}, {
-      snapshot: {
-        data: {
-          activeFileUri: fileUri,
-          files: {
-            [fileUri]: { dag: makeDag() }
-          }
-        }
-      }
-    })
+    )
 
     expect(patches).toHaveLength(1)
-    const queue = (patches[0] as { value: any }).value
-    expect(queue.totalSorries).toBe(1)
-    expect(queue.items[0].nodeId).toBe('todo')
-  })
-
-  it('breakage.analyze emits dependency->broken edges for error nodes', async () => {
-    const effect = createBreakageAnalyzeEffect({ now: () => 1234 })
-    const patches = await effect({}, {
-      snapshot: {
-        data: {
-          activeFileUri: fileUri,
-          files: {
-            [fileUri]: { dag: makeDag() }
-          }
-        }
-      }
-    })
-
-    expect(patches).toHaveLength(1)
-    const map = (patches[0] as { value: any }).value
-    expect(map.lastAnalyzedAt).toBe(1234)
-    expect(map.edges[0]).toMatchObject({
-      changedNodeId: 'root',
-      brokenNodeId: 'child',
-      errorCategory: 'TYPE_MISMATCH'
-    })
+    expect((patches[0] as { value: { succeeded: boolean } }).value.succeeded).toBe(false)
   })
 })

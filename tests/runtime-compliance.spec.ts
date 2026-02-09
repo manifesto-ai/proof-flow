@@ -16,25 +16,29 @@ const createApp = async (): Promise<App> => {
   const app = createProofFlowApp({
     schema,
     effects: {
-      'proof_flow.dag.extract': async (params) => {
-        const fileUri = (params as { fileUri?: string })?.fileUri ?? 'file:///proof.lean'
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
         return [{
-          op: 'merge',
-          path: 'files',
+          op: 'set',
+          path: into,
           value: {
-            [fileUri]: {
-              fileUri,
-              dag: null,
-              lastSyncedAt: 1
-            }
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
           }
         }]
       },
-      'proof_flow.editor.reveal': async () => [],
-      'proof_flow.editor.getCursor': async () => [],
-      'proof_flow.diagnose': async () => [],
-      'proof_flow.sorry.analyze': async () => [],
-      'proof_flow.breakage.analyze': async () => []
+      'lean.applyTactic': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: 'simp',
+            succeeded: true,
+            newGoalIds: []
+          }
+        }]
+      }
     }
   })
 
@@ -60,12 +64,13 @@ describe('Runtime compliance', () => {
     expect(typeof app.currentBranch).toBe('function')
   })
 
-  it('processes dag intents and creates a new head', async () => {
+  it('processes sync/tactic intents and advances world head', async () => {
     const app = await createApp()
     await app.ready()
 
     const headBefore = app.getCurrentHead?.()
-    await app.act('dag_sync', { fileUri: 'file:///proof.lean' }).done()
+    await app.act('syncGoals').done()
+    await app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }).done()
     const headAfter = app.getCurrentHead?.()
 
     expect(headBefore).toBeDefined()
@@ -73,6 +78,7 @@ describe('Runtime compliance', () => {
     expect(headAfter).not.toBe(headBefore)
 
     const state = app.getState<ProofFlowState>()
-    expect(state.data.files['file:///proof.lean']?.lastSyncedAt).toBe(1)
+    expect(state.data.goals.g1?.status).toBe('open')
+    expect(state.data.tacticResult?.succeeded).toBe(true)
   })
 })

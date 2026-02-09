@@ -8,34 +8,33 @@ import type { ProjectionState } from './projection-state.js'
 export { selectProjectionState } from './projection-state.js'
 
 export type ProjectionPanelActions = {
-  onNodeSelect: (nodeId: string) => Promise<void>
+  onSelectGoal: (goalId: string | null) => Promise<void>
+  onApplyTactic: (goalId: string, tactic: string) => Promise<void>
+  onCommitTactic: () => Promise<void>
+  onDismissTactic: () => Promise<void>
   onTogglePanel: () => Promise<void>
 }
 
 const initialProjectionState = (): ProjectionState => ({
   ui: {
-    panelVisible: true,
-    activeFileUri: null,
-    selectedNodeId: null,
-    cursorNodeId: null
+    panelVisible: true
   },
-  activeDag: null,
-  progress: null,
+  activeFileUri: null,
+  goals: [],
+  selectedGoal: null,
+  progress: {
+    totalGoals: 0,
+    resolvedGoals: 0,
+    openGoals: 0,
+    failedGoals: 0,
+    ratio: 0
+  },
+  isComplete: false,
+  isTacticPending: false,
+  lastTactic: null,
+  tacticResult: null,
   nodes: [],
-  selectedNode: null,
-  goalChain: [],
-  hasSorries: false,
-  sorryQueue: [],
-  hasError: false,
-  activeDiagnosis: null,
-  breakageMap: null,
-  runtimeDebug: {
-    world: {
-      headWorldId: null,
-      depth: null,
-      branchId: null
-    }
-  }
+  diagnostics: []
 })
 
 const encodeInitialState = (state: ProjectionState | null): string => {
@@ -244,8 +243,17 @@ export class ProjectionPanelController implements vscode.Disposable {
     }
 
     switch (message.type) {
-      case 'nodeClick':
-        await this.actions.onNodeSelect(message.payload.nodeId)
+      case 'selectGoal':
+        await this.actions.onSelectGoal(message.payload.goalId)
+        return
+      case 'applyTactic':
+        await this.actions.onApplyTactic(message.payload.goalId, message.payload.tactic)
+        return
+      case 'commitTactic':
+        await this.actions.onCommitTactic()
+        return
+      case 'dismissTactic':
+        await this.actions.onDismissTactic()
         return
       case 'togglePanel':
         await this.actions.onTogglePanel()
