@@ -5,3 +5,22 @@ dist/
 .idea/
 .proof-flow/
 .vscode-test/
+
+# Local workspace settings
+.vscode/
+
+# Generated local reports
+reports/*.json
+reports/proof-attempt-*.json
+reports/vscode-lineage-*.json
+
+# Lean sample local artifacts
+samples/goal-fidelity/.lake/
+samples/goal-fidelity/.vscode/
+samples/goal-fidelity/GoalFidelitySamples/hello.lean
+
+# Ad-hoc local runner scripts
+scripts/vscode-lineage-no-ui*.mjs
+scripts/vscode-lineage-no-ui*-suite.cjs
+scripts/vscode-proof-attempt*.mjs
+scripts/vscode-proof-attempt*-suite.cjs
