@@ -95,7 +95,7 @@ describe('Manifesto core issue reproductions', () => {
     expect(state.data.pending).toMatch(/.+/)
   })
 
-  it.fails('repro #135: at(record,key).field should access object field correctly', async () => {
+  it('repro #135: at(record,key).field should access object field correctly', async () => {
     const schema = `
       domain Repro135 {
         type Item = {
@@ -105,11 +105,12 @@ describe('Manifesto core issue reproductions', () => {
 
         state {
           items: Record<string, Item> = {}
+          goalId: string = "proof"
         }
 
-        action check(id: string) available when and(
-          isNotNull(at(items, id)),
-          eq(at(items, id).status, "open")
+        action check() available when and(
+          isNotNull(at(items, goalId)),
+          eq(at(items, goalId).status, "open")
         ) {
           onceIntent {
           }
@@ -126,7 +127,8 @@ describe('Manifesto core issue reproductions', () => {
             id: 'proof',
             status: 'open'
           }
-        }
+        },
+        goalId: 'proof'
       }
     )
 
