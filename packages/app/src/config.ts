@@ -1,10 +1,9 @@
 import {
   createApp,
-  createSilentPolicyService,
   type App,
   type AppConfig,
   type Effects
-} from '@manifesto-ai/app'
+} from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '@proof-flow/schema'
 
 export type ProofFlowAppOptions = {
@@ -29,7 +28,6 @@ export const createProofFlowApp = (options: ProofFlowAppOptions): App => {
     effects: options.effects,
     initialData: createInitialData(),
     world: options.world,
-    policyService: createSilentPolicyService(),
     validation: { effects: 'strict' },
     actorPolicy: {
       mode: 'require',

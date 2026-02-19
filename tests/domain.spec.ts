@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App, Effects } from '@manifesto-ai/app'
+import type { App, Effects } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { createProofFlowApp } from '../packages/app/src/config.js'
 
@@ -8,6 +8,22 @@ const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
   'utf8'
 )
+
+type ActionResult = {
+  completed?: () => Promise<unknown>
+  done?: () => Promise<unknown>
+}
+
+const completeAction = async (result: ActionResult): Promise<void> => {
+  if (result?.completed) {
+    await result.completed()
+    return
+  }
+
+  if (result?.done) {
+    await result.done()
+  }
+}
 
 const apps: App[] = []
 
@@ -44,7 +60,7 @@ describe('ProofFlow v2 domain actions', () => {
       'lean.applyTactic': async () => []
     })
 
-    await app.act('syncGoals').done()
+    await completeAction(app.act('syncGoals') as ActionResult)
 
     const state = app.getState<ProofFlowState>()
     expect(Object.keys(state.data.goals)).toEqual(['g1', 'g2'])
@@ -80,9 +96,9 @@ describe('ProofFlow v2 domain actions', () => {
       }
     })
 
-    await app.act('syncGoals').done()
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
-    await app.act('commitTactic').done()
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
+    await completeAction(app.act('commitTactic') as ActionResult)
 
     const state = app.getState<ProofFlowState>()
     expect(state.data.goals.g1?.status).toBe('resolved')
@@ -117,9 +133,9 @@ describe('ProofFlow v2 domain actions', () => {
       }
     })
 
-    await app.act('syncGoals').done()
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }).done()
-    await app.act('dismissTactic').done()
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }) as ActionResult)
+    await completeAction(app.act('dismissTactic') as ActionResult)
 
     const state = app.getState<ProofFlowState>()
     expect(state.data.goals.g1?.status).toBe('open')
@@ -133,10 +149,10 @@ describe('ProofFlow v2 domain actions', () => {
       'lean.applyTactic': async () => []
     })
 
-    await app.act('selectGoal', { goalId: 'g1' }).done()
+    await completeAction(app.act('selectGoal', { goalId: 'g1' }) as ActionResult)
     expect(app.getState<ProofFlowState>().data.activeGoalId).toBe('g1')
 
-    await app.act('selectGoal', { goalId: null }).done()
+    await completeAction(app.act('selectGoal', { goalId: null }) as ActionResult)
     expect(app.getState<ProofFlowState>().data.activeGoalId).toBeNull()
   })
 
@@ -161,10 +177,10 @@ describe('ProofFlow v2 domain actions', () => {
       }
     })
 
-    await app.act('syncGoals').done()
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }).done()
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }) as ActionResult)
 
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }).done()
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'omega' }) as ActionResult)
 
     const state = app.getState<ProofFlowState>()
     expect(state.data.lastTactic).toBe('simp')

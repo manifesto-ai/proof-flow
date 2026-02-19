@@ -1,6 +1,6 @@
 # ProofFlow Roadmap (Manifesto-Native Hard-Cut)
 
-## Snapshot (2026-02-09)
+## Snapshot (2026-02-19)
 - 아키텍처 기준: `packages/schema + packages/host + packages/app` 인플레이스 하드컷.
 - 도메인(MEL)은 `Goal/Tactic` 의미만 유지.
 - Lean/LSP/DAG/진단/위치는 `$host.leanState`로 격리.
@@ -43,6 +43,10 @@
 - [x] Lean 파생 로직 재정리 (`derive.ts`, stable goal id/host dag 구성)
 - [x] extension 이벤트 파이프라인 단순화 (`syncGoals` 중심)
 - [x] panel/webview 계약 단순화 및 최소 UX로 축소
+- [x] `@manifesto-ai/app` → `@manifesto-ai/sdk` 마이그레이션 완료
+  - 앱 생성/타입 경로 정합
+  - `act` 완료 대기 API를 `completed()` 우선으로 정렬
+  - 도메인 규격 대비 `lean.syncGoals`, `lean.applyTactic` effect 유효성 고정
 - [x] lineage diff 리포트 포맷을 goal 상태 전이 중심으로 교체
 - [x] 테스트 스위트 하드컷 기준 재작성
 - [x] 품질 게이트 통과

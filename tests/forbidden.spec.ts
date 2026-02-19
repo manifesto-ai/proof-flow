@@ -84,4 +84,18 @@ describe('Forbidden patterns', () => {
       expect(context.includes('onceIntent') || context.includes('once(')).toBe(true)
     }
   })
+
+  it('FORBID-12: no @manifesto-ai/app imports in runtime source/tests', async () => {
+    const appFiles = await readDirFiles(join(root, 'packages', 'app', 'src'))
+    const testFiles = await readDirFiles(join(root, 'tests'))
+
+    const allFiles = [...appFiles, ...testFiles]
+    for (const file of allFiles) {
+      if (file.path.includes('forbidden.spec.ts')) {
+        continue
+      }
+
+      expect(file.content.includes('@manifesto-ai/app')).toBe(false)
+    }
+  })
 })

@@ -11,9 +11,6 @@ importers:
       '@antfu/eslint-config':
         specifier: ^7.2.0
         version: 7.2.0(@vue/compiler-sfc@3.5.27)(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)(vitest@4.0.18(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))
-      '@manifesto-ai/app':
-        specifier: ^2.3.0
-        version: 2.3.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
       '@manifesto-ai/compiler':
         specifier: ^1.6.0
         version: 1.6.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
@@ -23,6 +20,9 @@ importers:
       '@manifesto-ai/host':
         specifier: ^2.2.0
         version: 2.2.0(@manifesto-ai/core@2.3.0)
+      '@manifesto-ai/sdk':
+        specifier: ^1.2.0
+        version: 1.2.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
       '@manifesto-ai/world':
         specifier: ^2.3.0
         version: 2.3.0(@manifesto-ai/core@2.3.0)
@@ -41,9 +41,9 @@ importers:
 
   packages/app:
     dependencies:
-      '@manifesto-ai/app':
-        specifier: ^2.3.0
-        version: 2.3.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+      '@manifesto-ai/sdk':
+        specifier: ^1.2.0
+        version: 1.2.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
       '@proof-flow/host':
         specifier: workspace:*
         version: link:../host
@@ -624,11 +624,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@manifesto-ai/app@2.3.0':
-    resolution: {integrity: sha512-iHVAe3XmJEwnKEdika+1twsHM/OxVigQtJVVTxBgrNxEnXCWd2T7/TatOIY4SAgK1ky0XSBBHoo20mA0ds8+rg==}
-
-  '@manifesto-ai/compiler@1.5.0':
-    resolution: {integrity: sha512-ELSj2iC/DiB99F0sAZbcNSpuTNmJL6wZFUPO9LGJGtzk2ZxHrffq7pLjjjZsHYWrV/ZKyu5J1h9eFPLMtwS6+g==}
+  '@manifesto-ai/compiler@1.6.0':
+    resolution: {integrity: sha512-jiylmkC8aGYCFEao7PqSdHnNIzeSRRqp3Uh+OjeEjOz1C62G9v3c3bhdwDpqaF04/G/3YJxIWqcL0wwoj6lyeg==}
     peerDependencies:
       '@anthropic-ai/sdk': ^0.26.0
       '@manifesto-ai/core': ^2.0.0
@@ -647,8 +644,8 @@ packages:
       webpack:
         optional: true
 
-  '@manifesto-ai/compiler@1.6.0':
-    resolution: {integrity: sha512-jiylmkC8aGYCFEao7PqSdHnNIzeSRRqp3Uh+OjeEjOz1C62G9v3c3bhdwDpqaF04/G/3YJxIWqcL0wwoj6lyeg==}
+  '@manifesto-ai/compiler@1.6.1':
+    resolution: {integrity: sha512-MsfGiGV8mVU04MCuloIB06gk7VCnBhxgxXg1VdN+5CwGbqtB7f/uvAnN2CkaQbhW06Dd70QMOEgnGKNYuSM/Hg==}
     peerDependencies:
       '@anthropic-ai/sdk': ^0.26.0
       '@manifesto-ai/core': ^2.0.0
@@ -670,18 +667,32 @@ packages:
   '@manifesto-ai/core@2.3.0':
     resolution: {integrity: sha512-n1mfAjKlzo7tV8PbZ8K/km8nxmCs9a0xlpuDesOICgerXJR+po2Sdgf0sDEWf7h+Ta8oNGcYe4WqQA3mf+F+lQ==}
 
+  '@manifesto-ai/core@2.4.0':
+    resolution: {integrity: sha512-Hys6dV/Ur+7+LIbQdw/fG79grhnmAV3FyjQHUcejKxDoetMTqFSuG1fDYis/xU3tZ7FMHt0jgjII0FJRlSEInA==}
+
   '@manifesto-ai/host@2.2.0':
     resolution: {integrity: sha512-8kq181Uf4/G37vBLXEi6V6jq5qLCJw7snNfkFEb7mByvrK+JqxDh/ntEOr6c3nHd6lZ87V6WUR+cQet+/yYSBQ==}
     peerDependencies:
       '@manifesto-ai/core': ^2.0.0
 
-  '@manifesto-ai/world@2.2.0':
-    resolution: {integrity: sha512-Qu4B75FMz4fPw/U90jEKEP4L8fti5O4KF5W43p0G8+cDikLzNaFNadkXX592W2sXLBsx/Z4IRMtfWZ6gvbxuWQ==}
+  '@manifesto-ai/host@2.3.1':
+    resolution: {integrity: sha512-iEfIUbRJo852ABvA4kWKt1sfhCAnSjCn6fWhcVk3ALLd8hrT5d2mjBBHsUNiER7dP1gEkehmkEEid5xhp19sAw==}
     peerDependencies:
       '@manifesto-ai/core': ^2.0.0
 
+  '@manifesto-ai/runtime@0.1.2':
+    resolution: {integrity: sha512-FGkws1HRiVChlE+KPezFSqWUGHDBZRw8ciGbarDpeLClMjcoXZlZ3D+jVsSUAScautlLETTfQwZkympdJ1m8Pg==}
+
+  '@manifesto-ai/sdk@1.2.0':
+    resolution: {integrity: sha512-E2QUOmCQmcvfxQKKVO9r+mVuwRnWGKbl85dC2yIyMg7Yand9dveEQNCQFFb7tVKrhhtDhJJK0K+l2vdeJJj20A==}
+
   '@manifesto-ai/world@2.3.0':
     resolution: {integrity: sha512-9+dY01xthOPrj3fB82W17w4cMcP/kB34XRH4zjZc6pEvsLBeqY1f1PQWp8jnns5Gu4nSCoE25WVhD6u7PLSsIg==}
+    peerDependencies:
+      '@manifesto-ai/core': ^2.0.0
+
+  '@manifesto-ai/world@2.4.0':
+    resolution: {integrity: sha512-L0bX9+OmyV3YAo+tohGHcgF1hymqdxWwmAfYw5SAej8Nsc+kKCnp4/Mprtk3VZtLU30cvCR/5pZKAOQWuZNS/A==}
     peerDependencies:
       '@manifesto-ai/core': ^2.0.0
 
@@ -3559,76 +3570,6 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@manifesto-ai/app@2.3.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/compiler': 1.5.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
-      '@manifesto-ai/core': 2.3.0
-      '@manifesto-ai/host': 2.2.0(@manifesto-ai/core@2.3.0)
-      '@manifesto-ai/world': 2.2.0(@manifesto-ai/core@2.3.0)
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-      - '@types/react'
-      - bufferutil
-      - openai
-      - react-devtools-core
-      - utf-8-validate
-      - vite
-      - webpack
-      - zod
-
-  '@manifesto-ai/app@2.3.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/compiler': 1.5.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
-      '@manifesto-ai/core': 2.3.0
-      '@manifesto-ai/host': 2.2.0(@manifesto-ai/core@2.3.0)
-      '@manifesto-ai/world': 2.2.0(@manifesto-ai/core@2.3.0)
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-      - '@types/react'
-      - bufferutil
-      - openai
-      - react-devtools-core
-      - utf-8-validate
-      - vite
-      - webpack
-      - zod
-
-  '@manifesto-ai/compiler@1.5.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/core': 2.3.0
-      '@manifesto-ai/host': 2.2.0(@manifesto-ai/core@2.3.0)
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
-      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      meow: 14.0.0
-      react: 19.2.4
-      zod: 4.3.6
-    optionalDependencies:
-      vite: 5.4.21(@types/node@24.10.11)
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - react-devtools-core
-      - utf-8-validate
-
-  '@manifesto-ai/compiler@1.5.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/core': 2.3.0
-      '@manifesto-ai/host': 2.2.0(@manifesto-ai/core@2.3.0)
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
-      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      meow: 14.0.0
-      react: 19.2.4
-      zod: 4.3.6
-    optionalDependencies:
-      vite: 7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2)
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - react-devtools-core
-      - utf-8-validate
-
   '@manifesto-ai/compiler@1.6.0(@manifesto-ai/core@2.3.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
     dependencies:
       '@manifesto-ai/core': 2.3.0
@@ -3647,20 +3588,133 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
+  '@manifesto-ai/compiler@1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
+      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
+      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      meow: 14.0.0
+      react: 19.2.4
+      zod: 4.3.6
+    optionalDependencies:
+      vite: 5.4.21(@types/node@24.10.11)
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
+
+  '@manifesto-ai/compiler@1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
+      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
+      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      meow: 14.0.0
+      react: 19.2.4
+      zod: 4.3.6
+    optionalDependencies:
+      vite: 7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2)
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
+
   '@manifesto-ai/core@2.3.0': {}
+
+  '@manifesto-ai/core@2.4.0': {}
 
   '@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.3.0)':
     dependencies:
       '@manifesto-ai/core': 2.3.0
 
-  '@manifesto-ai/world@2.2.0(@manifesto-ai/core@2.3.0)':
+  '@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0)':
     dependencies:
-      '@manifesto-ai/core': 2.3.0
-      uuid: 13.0.0
+      '@manifesto-ai/core': 2.4.0
+
+  '@manifesto-ai/runtime@0.1.2(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/compiler': 1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
+      '@manifesto-ai/world': 2.3.0(@manifesto-ai/core@2.4.0)
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@types/react'
+      - bufferutil
+      - openai
+      - react-devtools-core
+      - utf-8-validate
+      - vite
+      - webpack
+      - zod
+
+  '@manifesto-ai/runtime@0.1.2(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/compiler': 1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
+      '@manifesto-ai/world': 2.3.0(@manifesto-ai/core@2.4.0)
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@types/react'
+      - bufferutil
+      - openai
+      - react-devtools-core
+      - utf-8-validate
+      - vite
+      - webpack
+      - zod
+
+  '@manifesto-ai/sdk@1.2.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/runtime': 0.1.2(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+      '@manifesto-ai/world': 2.4.0(@manifesto-ai/core@2.4.0)
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@types/react'
+      - bufferutil
+      - openai
+      - react-devtools-core
+      - utf-8-validate
+      - vite
+      - webpack
+      - zod
+
+  '@manifesto-ai/sdk@1.2.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/runtime': 0.1.2(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
+      '@manifesto-ai/world': 2.4.0(@manifesto-ai/core@2.4.0)
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@types/react'
+      - bufferutil
+      - openai
+      - react-devtools-core
+      - utf-8-validate
+      - vite
+      - webpack
+      - zod
 
   '@manifesto-ai/world@2.3.0(@manifesto-ai/core@2.3.0)':
     dependencies:
       '@manifesto-ai/core': 2.3.0
+      uuid: 13.0.0
+
+  '@manifesto-ai/world@2.3.0(@manifesto-ai/core@2.4.0)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
+      uuid: 13.0.0
+
+  '@manifesto-ai/world@2.4.0(@manifesto-ai/core@2.4.0)':
+    dependencies:
+      '@manifesto-ai/core': 2.4.0
       uuid: 13.0.0
 
   '@nodelib/fs.scandir@2.1.5':

@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^7.2.0",
-    "@manifesto-ai/app": "^2.3.0",
+    "@manifesto-ai/sdk": "^1.2.0",
     "@manifesto-ai/compiler": "^1.6.0",
     "@manifesto-ai/core": "^2.3.0",
     "@manifesto-ai/host": "^2.2.0",

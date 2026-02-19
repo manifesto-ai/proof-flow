@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App } from '@manifesto-ai/app'
+import type { App } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '@proof-flow/schema'
 import { createProofFlowApp } from '../packages/app/src/config.js'
 
@@ -10,6 +10,22 @@ const domainMelPromise = readFile(
 )
 
 const apps: App[] = []
+
+type ActionResult = {
+  completed?: () => Promise<unknown>
+  done?: () => Promise<unknown>
+}
+
+const completeAction = async (result: ActionResult): Promise<void> => {
+  if (result?.completed) {
+    await result.completed()
+    return
+  }
+
+  if (result?.done) {
+    await result.done()
+  }
+}
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.dispose()))
@@ -39,7 +55,7 @@ describe('ProofFlow app config', () => {
     await app.ready()
     apps.push(app)
 
-    await app.act('syncGoals').done()
+    await completeAction(app.act('syncGoals') as ActionResult)
 
     const state = app.getState<ProofFlowState>()
     expect(state.data.goals.g1?.status).toBe('open')

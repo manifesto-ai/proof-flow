@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createTestApp, type App } from '@manifesto-ai/app'
+import type { App } from '@manifesto-ai/sdk'
 import { computeSnapshotHash } from '@manifesto-ai/world'
+import { createProofFlowApp } from '../packages/app/src/config.js'
 
 const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
@@ -12,8 +13,12 @@ const apps: App[] = []
 
 const createApp = async () => {
   const domainMel = await domainMelPromise
-  const app = createTestApp(domainMel, {
-    effects: {},
+  const app = createProofFlowApp({
+    schema: domainMel,
+    effects: {
+      'lean.syncGoals': async () => [],
+      'lean.applyTactic': async () => []
+    },
     actorPolicy: {
       mode: 'require',
       defaultActor: {

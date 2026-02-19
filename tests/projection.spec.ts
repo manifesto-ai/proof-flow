@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState } from '@manifesto-ai/app'
+import type { AppState } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { selectProjectionState } from '../packages/app/src/projection-state.js'
 

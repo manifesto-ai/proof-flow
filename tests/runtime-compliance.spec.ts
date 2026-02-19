@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App } from '@manifesto-ai/app'
+import type { App } from '@manifesto-ai/sdk'
 import { createProofFlowApp } from '../packages/app/src/config.js'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 
@@ -8,6 +8,22 @@ const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
   'utf8'
 )
+
+type ActionResult = {
+  completed?: () => Promise<unknown>
+  done?: () => Promise<unknown>
+}
+
+const completeAction = async (result: ActionResult): Promise<void> => {
+  if (result?.completed) {
+    await result.completed()
+    return
+  }
+
+  if (result?.done) {
+    await result.done()
+  }
+}
 
 const apps: App[] = []
 
@@ -69,8 +85,8 @@ describe('Runtime compliance', () => {
     await app.ready()
 
     const headBefore = app.getCurrentHead?.()
-    await app.act('syncGoals').done()
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }).done()
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }) as ActionResult)
     const headAfter = app.getCurrentHead?.()
 
     expect(headBefore).toBeDefined()

@@ -1,4 +1,4 @@
-import type { AppState } from '@manifesto-ai/app'
+import type { AppState } from '@manifesto-ai/sdk'
 import type { LeanDiagnostic } from '@proof-flow/host'
 import type {
   Goal,

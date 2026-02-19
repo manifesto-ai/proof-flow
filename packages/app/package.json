@@ -41,7 +41,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p webview/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@manifesto-ai/app": "^2.3.0",
+    "@manifesto-ai/sdk": "^1.2.0",
     "@proof-flow/host": "workspace:*",
     "@proof-flow/schema": "workspace:*"
   },

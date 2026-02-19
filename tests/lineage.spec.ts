@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App, Effects } from '@manifesto-ai/app'
+import type { App, Effects } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { createProofFlowApp } from '../packages/app/src/config.js'
 
@@ -8,6 +8,22 @@ const domainMelPromise = readFile(
   new URL('../packages/schema/domain.mel', import.meta.url),
   'utf8'
 )
+
+type ActionResult = {
+  completed?: () => Promise<unknown>
+  done?: () => Promise<unknown>
+}
+
+const completeAction = async (result: ActionResult): Promise<void> => {
+  if (result?.completed) {
+    await result.completed()
+    return
+  }
+
+  if (result?.done) {
+    await result.done()
+  }
+}
 
 const apps: App[] = []
 
@@ -68,11 +84,11 @@ describe('ProofFlow lineage invariants', () => {
     }
 
     const head0 = app.getCurrentHead()
-    await app.act('syncGoals').done()
+    await completeAction(app.act('syncGoals') as ActionResult)
     const head1 = app.getCurrentHead()
-    await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
     const head2 = app.getCurrentHead()
-    await app.act('commitTactic').done()
+    await completeAction(app.act('commitTactic') as ActionResult)
     const head3 = app.getCurrentHead()
 
     expect(new Set([head0, head1, head2, head3]).size).toBe(4)
@@ -91,10 +107,10 @@ describe('ProofFlow lineage invariants', () => {
     const appB = await createApp(deterministicEffects())
 
     for (const app of [appA, appB]) {
-      await app.act('syncGoals').done()
-      await app.act('selectGoal', { goalId: 'g1' }).done()
-      await app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }).done()
-      await app.act('commitTactic').done()
+      await completeAction(app.act('syncGoals') as ActionResult)
+      await completeAction(app.act('selectGoal', { goalId: 'g1' }) as ActionResult)
+      await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
+      await completeAction(app.act('commitTactic') as ActionResult)
     }
 
     const stateA = appA.getState<ProofFlowState & Record<string, unknown>>()

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import * as vscode from 'vscode'
-import type { App } from '@manifesto-ai/app'
+import type { App } from '@manifesto-ai/sdk'
 import type { Goal, ProofFlowState, TacticResult } from '@proof-flow/schema'
 import { createProofFlowApp } from './config.js'
 import {
@@ -109,13 +109,29 @@ const ensureApp = async (context: vscode.ExtensionContext): Promise<App> => {
   return app
 }
 
+type ActResult = {
+  completed?: () => Promise<unknown>
+  done?: () => Promise<unknown>
+}
+
+const awaitActionCompletion = async (result: ActResult | null | undefined): Promise<void> => {
+  if (result && typeof result.completed === 'function') {
+    await result.completed()
+    return
+  }
+
+  if (result && typeof result.done === 'function') {
+    await result.done()
+  }
+}
+
 const actSafely = async (type: string, input?: unknown): Promise<void> => {
   if (!app) {
     return
   }
 
   try {
-    await app.act(type, input).done()
+    await awaitActionCompletion(app.act(type, input) as ActResult)
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)
