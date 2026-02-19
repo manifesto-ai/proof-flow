@@ -6,6 +6,12 @@
 - Lean/LSP/DAG/진단/위치는 `$host.leanState`로 격리.
 - UI는 증명 작업 흐름(Progress/Goal/Tactic/Proof Map) 중심으로 최소화.
 
+## KPI (Proof-Value Loop)
+- `Goal status transition`: `statusChanged / edges` (lineage report에서 최소 1회 이상 증가) — 목표
+- `Action/world integrity`: `lineageLength > 0` and world head monotonically increases on each intent
+- `Replay determinism`: 동일 `action` 시퀀스가 동일 `worldIds`를 생성해야 함
+- `Goal id stability`: 동일 소스/목표 위치에서 `syncGoals` 반복 시 `goalId` 집합 불변
+
 ## Active Contracts (v2)
 ### MEL actions
 - `syncGoals`
@@ -36,6 +42,9 @@
 - 제거 완료: `dag_sync/sorry_queue_refresh/breakage_analyze/diagnose` 및 연계 커맨드/분기
 
 ## Completed
+- [x] `ProofLoop` 시뮬레이션을 위한 타입 헬퍼 추가 (`tests/fixtures/proof-loop.types.ts`)
+- [x] 스크립트 stale 커맨드 정리 (`goalCoverageSnapshot`/`suggestTactics`/`performanceSnapshot` 참조 제거)
+- [x] proof attempt/lineage goal-fidelity 샘플에 대한 경량 스크립트 시나리오 업데이트
 - [x] `domain.mel` 하드컷 (Goal/Tactic 중심)
 - [x] schema 타입 재정의 (`Goal`, `TacticResult`, `ProofFlowState`)
 - [x] host effect registry 하드컷 (`lean.*` 2개만 유지)
@@ -57,20 +66,25 @@
 
 ## Remaining Work
 ### P0 (증명 사용성 필수)
-- [ ] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정
+- [ ] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정 (샘플은 생성되었으나 검증 자동화 보강 필요)
 - [ ] tactic 실패 UX 정교화 (실패 이유 + 다음 액션 안내를 카드 1개로 통합)
 - [ ] goal id 안정성 회귀 테스트 강화 (편집/저장 반복 시 동일 goal 매핑 보장)
-- [ ] `lineageDiffReport`를 증명 세션 리포트 템플릿으로 정리
+- [x] `lineageDiffReport`를 증명 세션 리포트 템플릿으로 정리
 
 ### P1 (UI/UX 정돈)
-- [ ] 패널 스크롤/레이아웃 안정화 (긴 증명에서 항상 조작 가능)
-- [ ] Proof Map 노드 선택/에디터 reveal 동기화 회귀 E2E 추가
-- [ ] 기본 화면 정보 밀도 추가 축소 (증명에 직접 필요한 정보만 유지)
+- [x] 패널 스크롤/레이아웃 안정화 (overflow-y:auto + 고정 핵심 카드)
+- [x] Proof Map 노드/goal 선택 → 에디터 reveal 동기화 경로 점검 (E2E 포함)
+- [x] 기본 화면 정보 밀도 축소 완료 (필수 5요소 중심)
 
 ### P2 (운영/확장)
-- [ ] 리포트 export 경로/포맷 표준화 (CI artifact로도 수집 가능하게)
+- [x] 리포트 export 경로 표준화 (`reports/` 고정, 환경변수 오버라이드 지원)
 - [ ] 단일 파일 범위 밖(멀티파일) 확장 전 선행 제약 문서화
 - [ ] World store 영속화는 옵션으로만 실험 (기본 메모리 유지)
+
+## Status Checklist for Phase 5
+- [x] 핵심 KPI 계약은 문서화 완료
+- [ ] goal 상태 전이/lineage 재현성 자동검증을 위한 실제 샘플 3건 기준치 통과 확인
+- [ ] `pnpm test:spike:goal-fidelity` + `pnpm test:smoke:vscode` 정기 수행 체계화
 
 ## Risks
 1. Lean diagnostics 타이밍 지연으로 `syncGoals` 반응성이 흔들릴 수 있음.

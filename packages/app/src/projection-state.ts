@@ -75,14 +75,6 @@ export type ProjectionNode = {
   children: string[]
   dependencies: string[]
   goalCurrent: string | null
-  goalSnapshots: Array<{
-    before: string
-    after: string | null
-    tactic: string
-    appliedLemmas: string[]
-    subgoalsCreated: number
-  }>
-  estimatedDistance: number | null
 }
 
 export type ProjectionProgress = {
@@ -231,11 +223,6 @@ const toProjectionNodes = (
     .filter((node) => node.nodeId !== 'root')
     .map((node) => {
       const linkedGoal = node.goalId ? goalsById.get(node.goalId) : null
-      const estimatedDistance = node.status === 'resolved'
-        ? 0
-        : node.status === 'error'
-          ? 2
-          : 1
 
       return {
         id: node.nodeId,
@@ -251,9 +238,7 @@ const toProjectionNodes = (
         endCol: 0,
         children: [...(children.get(node.nodeId) ?? [])],
         dependencies: [...(dependencies.get(node.nodeId) ?? [])],
-        goalCurrent: linkedGoal?.statement ?? null,
-        goalSnapshots: [],
-        estimatedDistance
+        goalCurrent: linkedGoal?.statement ?? null
       }
     })
     .sort((left, right) => {

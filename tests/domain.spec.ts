@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { App, Effects } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { createProofFlowApp } from '../packages/app/src/config.js'
@@ -143,6 +143,85 @@ describe('ProofFlow v2 domain actions', () => {
     expect(state.data.applyingTactic).toBeNull()
   })
 
+  it('open goal transition follows success/failure loop', async () => {
+    let applyCalls = 0
+    const app = await createApp({
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+          }
+        }]
+      },
+      'lean.applyTactic': async (params) => {
+        applyCalls += 1
+        const into = (params as { into: string }).into
+        const tactic = (params as { tactic?: string }).tactic
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: tactic ?? 'simp',
+            succeeded: applyCalls === 1,
+            newGoalIds: []
+          }
+        }]
+      }
+    })
+
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }) as ActionResult)
+
+    const failed = app.getState<ProofFlowState>()
+    expect(failed.data.tacticResult?.succeeded).toBe(true)
+
+    await completeAction(app.act('commitTactic') as ActionResult)
+    const afterCommit = app.getState<ProofFlowState>()
+    expect(afterCommit.data.applyingTactic).toBeNull()
+
+    const appFailed = await createApp({
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+          }
+        }]
+      },
+      'lean.applyTactic': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic: 'omega',
+            succeeded: false,
+            newGoalIds: []
+          }
+        }]
+      }
+    })
+
+    await completeAction(appFailed.act('syncGoals') as ActionResult)
+    await completeAction(appFailed.act('applyTactic', { goalId: 'g1', tactic: 'omega' }) as ActionResult)
+
+    const failedState = appFailed.getState<ProofFlowState>()
+    expect(failedState.data.tacticResult?.succeeded).toBe(false)
+    await completeAction(appFailed.act('dismissTactic') as ActionResult)
+
+    const afterDismiss = appFailed.getState<ProofFlowState>()
+    expect(afterDismiss.data.applyingTactic).toBeNull()
+    expect(afterDismiss.data.tacticResult).toBeNull()
+    expect(afterDismiss.data.goals.g1?.status).toBe('open')
+  })
+
   it('selectGoal updates activeGoalId', async () => {
     const app = await createApp({
       'lean.syncGoals': async () => [],
@@ -185,5 +264,81 @@ describe('ProofFlow v2 domain actions', () => {
     const state = app.getState<ProofFlowState>()
     expect(state.data.lastTactic).toBe('simp')
     expect(state.data.tacticResult?.tactic).toBe('simp')
+  })
+
+  it('blocks concurrent apply while pending (no-op)', async () => {
+    let resolveTrigger = () => {}
+    const waitForRelease = new Promise<void>((resolve) => {
+      resolveTrigger = resolve
+    })
+    const applyCalls: string[] = []
+
+    const app = await createApp({
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+          }
+        }]
+      },
+      'lean.applyTactic': vi.fn(async (params) => {
+        const into = (params as { into: string }).into
+        const tactic = (params as { tactic: string }).tactic
+        applyCalls.push(tactic)
+        await waitForRelease
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            goalId: 'g1',
+            tactic,
+            succeeded: true,
+            newGoalIds: []
+          }
+        }]
+      })
+    })
+
+    await completeAction(app.act('syncGoals') as ActionResult)
+
+    const first = app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' })
+    const second = app.act('applyTactic', { goalId: 'g1', tactic: 'simp' })
+    await Promise.resolve().then(() => {})
+    resolveTrigger()
+
+    await completeAction(first as ActionResult)
+    await completeAction(second as ActionResult)
+
+    expect((app.getState<ProofFlowState>().data.tacticResult?.tactic ?? '')).toBe('exact True.intro')
+    expect(applyCalls).toEqual(['exact True.intro'])
+  })
+
+  it('blocks apply when goal is not open', async () => {
+    const app = await createApp({
+      'lean.syncGoals': async (params) => {
+        const into = (params as { into: string }).into
+        return [{
+          op: 'set',
+          path: into,
+          value: {
+            g1: { id: 'g1', statement: '⊢ False', status: 'resolved' }
+          }
+        }]
+      },
+      'lean.applyTactic': async () => {
+        throw new Error('should not be called')
+      }
+    })
+
+    await completeAction(app.act('syncGoals') as ActionResult)
+    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'simp' }) as ActionResult)
+
+    const state = app.getState<ProofFlowState>()
+    expect(state.data.lastTactic).toBeNull()
+    expect(state.data.tacticResult).toBeNull()
+    expect(state.data.applyingTactic).toBeNull()
   })
 })

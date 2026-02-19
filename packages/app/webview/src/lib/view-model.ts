@@ -42,12 +42,6 @@ const compareByStatus = (left: ProjectionNode, right: ProjectionNode): number =>
     return leftRank - rightRank
   }
 
-  const leftDistance = left.estimatedDistance ?? Number.POSITIVE_INFINITY
-  const rightDistance = right.estimatedDistance ?? Number.POSITIVE_INFINITY
-  if (leftDistance !== rightDistance) {
-    return leftDistance - rightDistance
-  }
-
   return compareByPosition(left, right)
 }
 
@@ -124,12 +118,6 @@ export const toCompactPriorityNodes = (
     const rightStatus = STATUS_ORDER[right.statusKind] ?? 99
     if (leftStatus !== rightStatus) {
       return leftStatus - rightStatus
-    }
-
-    const leftDistance = left.estimatedDistance ?? Number.POSITIVE_INFINITY
-    const rightDistance = right.estimatedDistance ?? Number.POSITIVE_INFINITY
-    if (leftDistance !== rightDistance) {
-      return leftDistance - rightDistance
     }
 
     return compareByPosition(left, right)

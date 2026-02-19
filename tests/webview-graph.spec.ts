@@ -19,9 +19,7 @@ const makeNode = (input: {
   endCol: 10,
   children: [],
   dependencies: input.dependencies ?? [],
-  goalCurrent: null,
-  goalSnapshots: [],
-  estimatedDistance: null
+  goalCurrent: null
 })
 
 describe('webview graph layout', () => {

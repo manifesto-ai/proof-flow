@@ -19,9 +19,7 @@ const nodes = [
     endCol: 10,
     children: ['child'],
     dependencies: [],
-    goalCurrent: null,
-    goalSnapshots: [],
-    estimatedDistance: 0
+    goalCurrent: null
   },
   {
     id: 'child',
@@ -36,9 +34,7 @@ const nodes = [
     endCol: 12,
     children: [],
     dependencies: ['root'],
-    goalCurrent: '⊢ Nat = Bool',
-    goalSnapshots: [],
-    estimatedDistance: 2
+    goalCurrent: '⊢ Nat = Bool'
   },
   {
     id: 'todo',
@@ -53,9 +49,7 @@ const nodes = [
     endCol: 12,
     children: [],
     dependencies: [],
-    goalCurrent: '⊢ True',
-    goalSnapshots: [],
-    estimatedDistance: 1
+    goalCurrent: '⊢ True'
   }
 ]
 
@@ -92,7 +86,7 @@ describe('webview view model', () => {
     expect(statusSorted.map((node) => node.id)).toEqual(['child', 'todo', 'root'])
   })
 
-  it('builds compact priority list by status then distance', () => {
+  it('builds compact priority list by status', () => {
     const compact = toCompactPriorityNodes(nodes, 2)
     expect(compact.map((node) => node.id)).toEqual(['child', 'todo'])
   })

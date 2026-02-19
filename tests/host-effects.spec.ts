@@ -97,4 +97,67 @@ describe('Host effects (lean.*)', () => {
     expect(patches).toHaveLength(1)
     expect((patches[0] as { value: { succeeded: boolean } }).value.succeeded).toBe(false)
   })
+
+  it('lean.syncGoals preserves goal ids for unchanged source and declaration range', async () => {
+    const effect = createLeanSyncGoalsEffect({
+      loadContext: async () => ({
+        fileUri: 'file:///proof.lean',
+        sourceText: 'theorem t : True := by\n  by_cases h : True\n  · exact h.elim\n  · cases h\n',
+        diagnostics: []
+      }),
+      now: () => 1
+    })
+
+    const first = await effect({ into: 'goals' }, {})
+    const second = await effect({ into: 'goals' }, {})
+
+    const firstGoals = (first[0] as { value: Record<string, { id: string }> }).value
+    const secondGoals = (second[0] as { value: Record<string, { id: string }> }).value
+
+    expect(new Set(Object.keys(firstGoals))).toEqual(new Set(Object.keys(secondGoals)))
+  })
+
+  it('lean.applyTactic returns host refresh patch even on tactic failure', async () => {
+    const applyTactic = vi.fn(async () => ({ succeeded: false, errorMessage: 'TIMEOUT' }))
+    const effect = createLeanApplyTacticEffect({
+      loadContext: async () => ({
+        fileUri: 'file:///proof.lean',
+        sourceText: 'theorem t : True := by\n  sorry\n',
+        diagnostics: []
+      }),
+      applyTactic,
+      now: () => 456
+    })
+
+    const patches = await effect(
+      { goalId: 'goal:1:abc', tactic: 'omega', into: 'tacticResult' },
+      {
+        snapshot: {
+          data: {
+            goals: {
+              'goal:1:abc': { id: 'goal:1:abc', statement: '⊢ True', status: 'open' }
+            },
+            $host: {
+              leanState: {
+                fileUri: 'file:///proof.lean',
+                goalPositions: {
+                  'goal:1:abc': {
+                    startLine: 2,
+                    startCol: 2,
+                    endLine: 2,
+                    endCol: 7
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    )
+
+    expect(applyTactic).toHaveBeenCalledTimes(1)
+    expect(patches.some((patch) => patch.path === 'tacticResult')).toBe(true)
+    expect(patches.some((patch) => patch.path === '$host.leanState')).toBe(true)
+    expect((patches[0] as { value: { succeeded: boolean } }).value.succeeded).toBe(false)
+  })
 })

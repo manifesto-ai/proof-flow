@@ -98,4 +98,23 @@ describe('Forbidden patterns', () => {
       expect(file.content.includes('@manifesto-ai/app')).toBe(false)
     }
   })
+
+  it('FORBID-13: no removed command/effect references in scripts', async () => {
+    const scriptFiles = await readDirFiles(join(root, 'scripts'))
+    const forbiddenPatterns = [
+      /proof-flow\.goalCoverageSnapshot/,
+      /proof-flow\.suggestTactics/,
+      /proof-flow\.performanceSnapshot/,
+      /proof-flow\.worldHeadsSnapshot/,
+      /proof_flow\.dag\.extract/,
+      /proof_flow\.editor\.reveal/,
+      /proof_flow\.attempt\./
+    ]
+
+    for (const file of scriptFiles) {
+      for (const pattern of forbiddenPatterns) {
+        expect(pattern.test(file.content)).toBe(false)
+      }
+    }
+  })
 })
