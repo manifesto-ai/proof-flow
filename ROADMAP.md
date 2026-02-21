@@ -66,9 +66,9 @@
 
 ## Remaining Work
 ### P0 (증명 사용성 필수)
-- [ ] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정 (샘플은 생성되었으나 검증 자동화 보강 필요)
-- [ ] tactic 실패 UX 정교화 (실패 이유 + 다음 액션 안내를 카드 1개로 통합)
-- [ ] goal id 안정성 회귀 테스트 강화 (편집/저장 반복 시 동일 goal 매핑 보장)
+- [x] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정
+- [x] tactic 실패 UX 정교화 (실패 이유 + dismiss 액션 안내 카드 통합)
+- [x] goal id 안정성 회귀 테스트 강화 (whitespace/반복 sync에서 ID 불변성 검증)
 - [x] `lineageDiffReport`를 증명 세션 리포트 템플릿으로 정리
 
 ### P1 (UI/UX 정돈)
@@ -83,8 +83,8 @@
 
 ## Status Checklist for Phase 5
 - [x] 핵심 KPI 계약은 문서화 완료
-- [ ] goal 상태 전이/lineage 재현성 자동검증을 위한 실제 샘플 3건 기준치 통과 확인
-- [ ] `pnpm test:spike:goal-fidelity` + `pnpm test:smoke:vscode` 정기 수행 체계화
+- [x] goal 상태 전이/lineage 재현성 자동검증을 위한 실제 샘플 3건 기준치 통과 확인
+- [x] `pnpm test:spike:goal-fidelity` + `pnpm test:smoke:vscode` 정기 수행 체계화
 
 ## Risks
 1. Lean diagnostics 타이밍 지연으로 `syncGoals` 반응성이 흔들릴 수 있음.
@@ -92,6 +92,6 @@
 3. intent marker(`applying/resolving/syncing`)는 실행 추적에는 유효하지만 비교 테스트에서는 노이즈가 될 수 있음.
 
 ## Immediate Queue
-1. Lean 샘플 3종 회귀 픽스처 확정.
-2. tactic 실패 UX 카드 통합.
-3. Proof Map 선택-에디터 동기화 E2E 추가.
+1. P2 과제: 멀티파일 제약/확장성, 영속 World 옵션 정책 정리.
+2. `@proof-flow` 스크립트/문서에서 삭제된 액션/효과 레거시 조각 정기 점검.
+3. `proof_flow` 핵심 이슈 반영 결과(핵심값 증거) 공유.

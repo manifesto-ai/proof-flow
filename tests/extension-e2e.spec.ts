@@ -123,7 +123,8 @@ const env = vi.hoisted(() => {
           goalId: 'g1',
           tactic: 'exact True.intro',
           succeeded: true,
-          newGoalIds: []
+          newGoalIds: [],
+          errorMessage: null
         }
       }
     }
@@ -143,15 +144,19 @@ const env = vi.hoisted(() => {
         fakeState.data.activeGoalId = (input as { goalId?: string | null })?.goalId ?? null
       }
       if (type === 'applyTactic') {
+        const tactic = (input as { tactic?: string })?.tactic ?? 'simp'
         fakeState.data.tacticResult = {
           goalId: (input as { goalId?: string })?.goalId ?? 'g1',
-          tactic: (input as { tactic?: string })?.tactic ?? 'simp',
-          succeeded: true,
-          newGoalIds: []
+          tactic,
+          succeeded: tactic !== 'fail',
+          newGoalIds: [],
+          errorMessage: tactic === 'fail' ? 'simulated failure' : null
         }
       }
       if (type === 'commitTactic') {
-        fakeState.data.goals.g1.status = 'resolved'
+        if (fakeState.data.tacticResult?.succeeded) {
+          fakeState.data.goals.g1.status = 'resolved'
+        }
         fakeState.data.tacticResult = null
       }
       if (type === 'dismissTactic') {
@@ -343,7 +348,8 @@ const env = vi.hoisted(() => {
     },
     getCommand: (id: string) => commands.get(id),
     getPanel: () => panelInstances.at(-1),
-    getActCalls: () => [...actCalls]
+    getActCalls: () => [...actCalls],
+    getState: () => fakeState
   }
 })
 
@@ -418,5 +424,15 @@ describe('Extension E2E flow (hard-cut)', () => {
     expect(types).toContain('applyTactic')
     expect(types).toContain('commitTactic')
     expect(types).toContain('dismissTactic')
+  })
+
+  it('dispatches dismiss for failed tactic result', async () => {
+    const panel = env.getPanel()
+    await panel?.actions.onApplyTactic('g1', 'fail')
+    expect(env.getState().data.tacticResult?.succeeded).toBe(false)
+    expect(env.getState().data.tacticResult?.errorMessage).toBe('simulated failure')
+
+    await panel?.actions.onDismissTactic()
+    expect(env.getState().data.tacticResult).toBeNull()
   })
 })

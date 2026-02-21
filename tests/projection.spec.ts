@@ -110,7 +110,8 @@ describe('Projection selector', () => {
           goalId: 'g1',
           tactic: 'simp',
           succeeded: false,
-          newGoalIds: []
+          newGoalIds: [],
+          errorMessage: 'dummy error'
         }
       },
       computed: {
@@ -121,6 +122,23 @@ describe('Projection selector', () => {
     expect(projection.ui.panelVisible).toBe(false)
     expect(projection.isTacticPending).toBe(true)
     expect(projection.tacticResult?.tactic).toBe('simp')
+    expect(projection.tacticResult?.errorMessage).toBe('dummy error')
+  })
+
+  it('normalizes tacticResult without explicit errorMessage', () => {
+    const projection = selectProjectionState(makeState({
+      data: {
+        ...baseData(),
+        tacticResult: {
+          goalId: 'g1',
+          tactic: 'simp',
+          succeeded: true,
+          newGoalIds: []
+        }
+      }
+    }), true)
+
+    expect(projection.tacticResult?.errorMessage).toBeNull()
   })
 
   it('falls back safely when $host.leanState is missing', () => {

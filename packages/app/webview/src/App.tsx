@@ -102,6 +102,10 @@ export function App({ initialState, postMessage }: PanelAppProps) {
     projection.nodes.find((node) => node.goalId === selectedGoal?.id)?.id ?? null
   ), [projection.nodes, selectedGoal?.id])
 
+  const selectedNodeError = selectedNodeId
+    ? projection.nodes.find((node) => node.id === selectedNodeId)?.errorMessage
+    : null
+
   const graph = useMemo(() => toGraphLayout({
     nodes: projection.nodes,
     layout: 'topDown',
@@ -216,6 +220,13 @@ export function App({ initialState, postMessage }: PanelAppProps) {
                 </Badge>
                 <span className="text-slate-300">{projection.tacticResult.tactic}</span>
               </div>
+              {!projection.tacticResult.succeeded && (
+                <div className="mb-2 text-xs leading-5 text-rose-200">
+                  {projection.tacticResult.errorMessage && projection.tacticResult.errorMessage.trim().length > 0
+                    ? projection.tacticResult.errorMessage
+                    : (selectedNodeError ?? 'tactic applied but proof goal unchanged')}
+                </div>
+              )}
               <div className="flex gap-2">
                 {projection.tacticResult.succeeded
                   ? <Button size="sm" onClick={() => send({ type: 'commitTactic' })}>Commit</Button>

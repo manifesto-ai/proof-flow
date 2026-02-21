@@ -108,7 +108,8 @@ export const createLeanApplyTacticEffect = (
     goalId: input.goalId,
     tactic: input.tactic,
     succeeded: false,
-    newGoalIds: [] as string[]
+    newGoalIds: [] as string[],
+    errorMessage: null as string | null
   }
 
   if (!fileUri) {
@@ -129,10 +130,19 @@ export const createLeanApplyTacticEffect = (
     let newGoalIds: string[] = []
 
     const context = await options.loadContext()
+    let succeeded = outcome.succeeded
+    let errorMessage = outcome.errorMessage ?? null
+
     if (context) {
       const derived = deriveLeanState(context, options.now?.() ?? Date.now())
       hostPatch = { op: 'set', path: '$host.leanState', value: derived.hostState }
       newGoalIds = Object.keys(derived.goals).filter((goalId) => !previousGoalIds.has(goalId))
+
+      const afterTarget = derived.goals[input.goalId]
+      if (succeeded && (!afterTarget || afterTarget.status === 'open')) {
+        succeeded = false
+        errorMessage = errorMessage ?? 'tactic applied but proof goal unchanged'
+      }
     }
 
     const patches: Array<{ op: 'set'; path: string; value: unknown }> = [
@@ -142,9 +152,9 @@ export const createLeanApplyTacticEffect = (
         value: {
           goalId: input.goalId,
           tactic: input.tactic,
-          succeeded: outcome.succeeded,
+          succeeded,
           newGoalIds,
-          errorMessage: outcome.errorMessage ?? null
+          errorMessage
         }
       }
     ]

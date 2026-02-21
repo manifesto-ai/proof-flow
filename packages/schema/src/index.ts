@@ -11,6 +11,7 @@ export type TacticResult = {
   tactic: string
   succeeded: boolean
   newGoalIds: string[]
+  errorMessage: string | null
 }
 
 export type ProofFlowState = {

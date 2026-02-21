@@ -90,7 +90,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic: 'exact True.intro',
             succeeded: true,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       }
@@ -127,7 +128,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic: 'omega',
             succeeded: false,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       }
@@ -167,7 +169,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic: tactic ?? 'simp',
             succeeded: applyCalls === 1,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       }
@@ -203,7 +206,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic: 'omega',
             succeeded: false,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       }
@@ -250,7 +254,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic: 'simp',
             succeeded: false,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       }
@@ -296,7 +301,8 @@ describe('ProofFlow v2 domain actions', () => {
             goalId: 'g1',
             tactic,
             succeeded: true,
-            newGoalIds: []
+            newGoalIds: [],
+            errorMessage: null
           }
         }]
       })

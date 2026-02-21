@@ -11,7 +11,8 @@ domain ProofFlow {
     goalId: string,
     tactic: string,
     succeeded: boolean,
-    newGoalIds: Array<string>
+    newGoalIds: Array<string>,
+    errorMessage: string | null
   }
 
   state {

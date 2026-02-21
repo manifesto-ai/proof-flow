@@ -6,12 +6,52 @@ const vscode = require('vscode')
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const sampleFiles = [
-  'GoalFidelitySamples/Basic.lean',
-  'GoalFidelitySamples/MathlibSample.lean',
-  'GoalFidelitySamples/StableOnly.lean',
-  'GoalFidelitySamples/InsertionSortInteractive.lean',
-  'GoalFidelitySamples/ProofAttempt.lean'
+  {
+    path: 'GoalFidelitySamples/Basic.lean',
+    expected: {
+      minOpenGoals: 0,
+      minEdges: 0,
+      requiresMathlib: false
+    }
+  },
+  {
+    path: 'GoalFidelitySamples/MathlibSample.lean',
+    expected: {
+      minOpenGoals: 0,
+      minEdges: 0,
+      requiresMathlib: true
+    }
+  },
+  {
+    path: 'GoalFidelitySamples/StableOnly.lean',
+    expected: {
+      minOpenGoals: 0,
+      minEdges: 0,
+      requiresMathlib: false
+    }
+  },
+  {
+    path: 'GoalFidelitySamples/InsertionSortInteractive.lean',
+    expected: {
+      minOpenGoals: 0,
+      minEdges: 0,
+      requiresMathlib: false
+    }
+  },
+  {
+    path: 'GoalFidelitySamples/ProofAttempt.lean',
+    expected: {
+      minOpenGoals: 0,
+      minEdges: 0,
+      requiresMathlib: false
+    }
+  }
 ]
+
+const countSorryGoals = (text) => {
+  const matches = text.match(/\bsorry\b/g)
+  return matches ? matches.length : 0
+}
 
 const resolveProofAttemptProof = () => (
   [
@@ -104,11 +144,26 @@ async function run() {
   await wait(300)
 
   const samples = []
-  for (const relativePath of sampleFiles) {
+  for (const sample of sampleFiles) {
+    const relativePath = sample.path
     const uri = vscode.Uri.joinPath(workspace.uri, relativePath)
     const document = await vscode.workspace.openTextDocument(uri)
     const editor = await vscode.window.showTextDocument(document)
     await wait(400)
+
+    const sourceText = document.getText()
+    const sorryCount = countSorryGoals(sourceText)
+    assert.ok(
+      sorryCount >= sample.expected.minOpenGoals,
+      `Expected at least ${sample.expected.minOpenGoals} sorry markers in ${relativePath}, found ${sorryCount}`
+    )
+
+    if (sample.expected.requiresMathlib) {
+      assert.ok(
+        /(^|\n)\s*import\s+Mathlib\b/.test(sourceText),
+        `Expected ${relativePath} to import Mathlib`
+      )
+    }
 
     const before = await readLineageSnapshot(12000)
 
@@ -124,6 +179,7 @@ async function run() {
 
     samples.push({
       sample: relativePath,
+      expected: sample.expected,
       before,
       after,
       delta: {
@@ -152,6 +208,20 @@ async function run() {
   const hasExtractableProofData = samples.some((entry) => (
     entry.delta.edges + entry.delta.added + entry.delta.removed + entry.delta.statusChanged
   ) > 0)
+
+  for (const entry of samples) {
+    assert.ok(
+      entry.delta.edges >= entry.expected.minEdges,
+      `Expected sample ${entry.sample} to report at least ${entry.expected.minEdges} edge delta, got ${entry.delta.edges}`
+    )
+  }
+
+  for (const entry of samples) {
+    assert.ok(
+      entry.delta.added + entry.delta.statusChanged >= entry.expected.minOpenGoals,
+      `Expected sample ${entry.sample} to surface at least ${entry.expected.minOpenGoals} open-related delta`
+    )
+  }
   assert.ok(
     hasExtractableProofData,
     `Expected at least one sample to surface proof-related world delta. Report: ${

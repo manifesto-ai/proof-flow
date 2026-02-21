@@ -137,6 +137,7 @@ describe('Proof loop loop report', () => {
             goalId: 'g1',
             tactic: tactic ?? 'simp',
             succeeded: tactic === 'exact True.intro',
+            errorMessage: null,
             newGoalIds: []
           }
         }
@@ -179,6 +180,7 @@ describe('Proof loop loop report', () => {
             goalId: 'g1',
             tactic: tactic ?? 'simp',
             succeeded: tactic === 'exact True.intro',
+            errorMessage: null,
             newGoalIds: []
           }
         }

@@ -59,6 +59,7 @@ const deterministicEffects = (): Effects => ({
         goalId: 'g1',
         tactic: 'exact True.intro',
         succeeded: true,
+        errorMessage: null,
         newGoalIds: []
       }
     }]
@@ -95,6 +96,7 @@ const createTransitioningEffects = (opts: { succeed: boolean }): Effects => {
           goalId: 'g1',
           tactic: 'exact True.intro',
           succeeded: opts.succeed,
+          errorMessage: null,
           newGoalIds: []
         }
       }]

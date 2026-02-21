@@ -36,7 +36,17 @@ const stableHash = (input: string): string => {
   return Math.abs(hash).toString(16)
 }
 
-const toGoalId = (startLine: number, statement: string): string => `goal:${startLine}:${stableHash(statement)}`
+const normalizeGoalStatement = (statement: string): string => (
+  statement
+    .replace(/--.*$/gm, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+)
+
+const toGoalId = (startLine: number, statement: string): string => (
+  `goal:${startLine}:${stableHash(normalizeGoalStatement(statement))}`
+)
 
 const toDiagnosticGoalId = (line: number, message: string): string => `diag:${line}:${stableHash(message)}`
 

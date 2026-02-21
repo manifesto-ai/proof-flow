@@ -1,3 +1,5 @@
+import Mathlib
+
 def insertSorted (x : Nat) : List Nat → List Nat
   | [] => [x]
   | y :: ys =>
@@ -26,3 +28,7 @@ theorem insertionSort_length (xs : List Nat) :
   | nil => simp [insertionSort]
   | cons x xs ih =>
     simp [insertionSort, insertSorted_length, ih]
+
+theorem insertionSort_length_pending (xs : List Nat) :
+    (insertionSort xs).length = xs.length := by
+  sorry

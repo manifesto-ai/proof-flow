@@ -19,6 +19,10 @@ const asString = (value: unknown): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
 )
 
+const asNullableString = (value: unknown): string | null => (
+  typeof value === 'string' ? value : null
+)
+
 const asNullableNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 )
@@ -276,6 +280,7 @@ const normalizeTacticResult = (value: unknown): TacticResult | null => {
   const tactic = asString(record.tactic)
   const succeeded = record.succeeded
   const newGoalIds = record.newGoalIds
+  const errorMessage = asNullableString(record.errorMessage)
 
   if (!goalId || !tactic || typeof succeeded !== 'boolean' || !Array.isArray(newGoalIds)) {
     return null
@@ -287,7 +292,8 @@ const normalizeTacticResult = (value: unknown): TacticResult | null => {
     goalId,
     tactic,
     succeeded,
-    newGoalIds: normalizedNewGoalIds
+    newGoalIds: normalizedNewGoalIds,
+    errorMessage
   }
 }
 

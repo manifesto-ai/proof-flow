@@ -51,6 +51,7 @@ const createApp = async (): Promise<App> => {
             goalId: 'g1',
             tactic: 'simp',
             succeeded: true,
+            errorMessage: null,
             newGoalIds: []
           }
         }]

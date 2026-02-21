@@ -198,6 +198,10 @@ const asString = (value: unknown): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
 )
 
+const asNullableString = (value: unknown): string | null => (
+  typeof value === 'string' ? value : null
+)
+
 const extractStateData = (snapshot: unknown): Record<string, unknown> | null => {
   const snapshotRecord = asRecord(snapshot)
   if (!snapshotRecord) {
@@ -254,6 +258,7 @@ const normalizeTacticResult = (stateData: Record<string, unknown> | null): Tacti
   const tactic = asString(value.tactic)
   const succeeded = value.succeeded
   const newGoalIds = value.newGoalIds
+  const errorMessage = asNullableString(value.errorMessage)
 
   if (!goalId || !tactic || typeof succeeded !== 'boolean' || !Array.isArray(newGoalIds)) {
     return null
@@ -263,7 +268,8 @@ const normalizeTacticResult = (stateData: Record<string, unknown> | null): Tacti
     goalId,
     tactic,
     succeeded,
-    newGoalIds: newGoalIds.filter((entry): entry is string => typeof entry === 'string')
+    newGoalIds: newGoalIds.filter((entry): entry is string => typeof entry === 'string'),
+    errorMessage
   }
 }
 
