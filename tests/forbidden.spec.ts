@@ -28,6 +28,15 @@ const readDirFiles = async (dir: string): Promise<Array<{ path: string; content:
   return Promise.all(files.map(async (path) => ({ path, content: await readFile(path, 'utf8') })))
 }
 
+const readFileList = async (paths: string[]): Promise<Array<{ path: string; content: string }>> => {
+  const files = await Promise.all(paths.map(async (path) => ({
+    path,
+    content: await readFile(path, 'utf8')
+  })))
+
+  return files
+}
+
 describe('Forbidden patterns', () => {
   it('FORBID-1/2: no direct snapshot mutation or external state managers', async () => {
     const files = await readDirFiles(join(root, 'packages'))
@@ -116,5 +125,37 @@ describe('Forbidden patterns', () => {
         expect(pattern.test(file.content)).toBe(false)
       }
     }
+  })
+
+  it('FORBID-14: active docs must not reference removed command/effect patterns', async () => {
+    const activeDocs = [
+      join(root, 'docs', 'limits.md'),
+      join(root, 'docs', 'GOAL-FIDELITY-SPIKE.md')
+    ]
+
+    const files = await readFileList(activeDocs)
+    const forbiddenPatterns = [
+      /proof-flow\.goalCoverageSnapshot/,
+      /proof-flow\.suggestTactics/,
+      /proof-flow\.performanceSnapshot/,
+      /proof-flow\.worldHeadsSnapshot/,
+      /proof_flow\.dag\.extract/,
+      /proof_flow\.editor\.reveal/,
+      /proof_flow\.attempt\./,
+      /proof_flow\.editor\.getCursor/
+    ]
+
+    for (const file of files) {
+      for (const pattern of forbiddenPatterns) {
+        expect(pattern.test(file.content)).toBe(false)
+      }
+    }
+  })
+
+  it('FORBID-15: extension wiring keeps persistence default to in-memory', async () => {
+    const extensionSource = await readFile(join(root, 'packages', 'app', 'src', 'extension.ts'), 'utf8')
+
+    expect(/createProofFlowApp\(\s*\{[\s\S]*?schema\s*,[\s\S]*?effects:\s*proofFlowEffects\s*,?[\s\S]*?\}\s*\)/m.test(extensionSource)).toBe(true)
+    expect(/createProofFlowApp\([\s\S]*?\bworld\s*:/m.test(extensionSource)).toBe(false)
   })
 })

@@ -78,8 +78,11 @@
 
 ### P2 (운영/확장)
 - [x] 리포트 export 경로 표준화 (`reports/` 고정, 환경변수 오버라이드 지원)
-- [ ] 단일 파일 범위 밖(멀티파일) 확장 전 선행 제약 문서화
-- [ ] World store 영속화는 옵션으로만 실험 (기본 메모리 유지)
+- [x] 단일 파일 범위 밖(멀티파일) 확장 전 선행 제약 문서화 (`docs/limits.md`)
+- [x] World store 영속화는 옵션으로만 실험 (기본 메모리 유지) 정리 (`docs/limits.md`)
+
+### P2 Checklist
+- [ ] 멀티파일 확장 가드와 영속 옵션 가이드라인이 문서로만 남아 있는지 정기 점검
 
 ## Status Checklist for Phase 5
 - [x] 핵심 KPI 계약은 문서화 완료
@@ -92,6 +95,6 @@
 3. intent marker(`applying/resolving/syncing`)는 실행 추적에는 유효하지만 비교 테스트에서는 노이즈가 될 수 있음.
 
 ## Immediate Queue
-1. P2 과제: 멀티파일 제약/확장성, 영속 World 옵션 정책 정리.
+1. P2 과제 정리: 멀티파일 제약/영속 World 옵션 정책의 구현 전 문서 고정 상태 확인.
 2. `@proof-flow` 스크립트/문서에서 삭제된 액션/효과 레거시 조각 정기 점검.
 3. `proof_flow` 핵심 이슈 반영 결과(핵심값 증거) 공유.
