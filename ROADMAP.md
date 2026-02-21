@@ -92,4 +92,4 @@
 ## Immediate Queue
 1. KPI 게이트 4종의 연속 실행 리포트 체인 정렬 (`manifesto-value-evidence` 주기 갱신)
 2. 사용자 피드백을 반영한 실패 케이스(전략 시도 실패, 부분 해소)에 대한 샘플 라이브러리 확장
-3. `proof_flow` 레거시 기록 문서(`docs/ARCHITECTURE-REPORT.md` 등)와 활성 문서 분리 운영 규칙 점검
+3. 레거시 문서 정리/보존은 완료: `docs/legacy` 디렉터리로 보관 후 active docs 가드 대상을 명시

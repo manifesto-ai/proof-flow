@@ -130,7 +130,8 @@ describe('Forbidden patterns', () => {
   it('FORBID-14: active docs must not reference removed command/effect patterns', async () => {
     const activeDocs = [
       join(root, 'docs', 'limits.md'),
-      join(root, 'docs', 'GOAL-FIDELITY-SPIKE.md')
+      join(root, 'docs', 'GOAL-FIDELITY-SPIKE.md'),
+      join(root, 'docs', 'manifesto-value-evidence-2026-02-21.md')
     ]
 
     const files = await readFileList(activeDocs)
