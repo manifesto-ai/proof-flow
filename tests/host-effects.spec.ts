@@ -106,6 +106,51 @@ describe('Host effects (lean.*)', () => {
     })
   })
 
+  it('lean.applyTactic captures thrown adapter error as errorMessage', async () => {
+    const effect = createLeanApplyTacticEffect({
+      loadContext: async () => ({
+        fileUri: 'file:///proof.lean',
+        sourceText: 'theorem t : True := by\n  sorry\n',
+        diagnostics: []
+      }),
+      applyTactic: async () => {
+        throw new Error('adapter unavailable')
+      }
+    })
+
+    const patches = await effect(
+      { goalId: 'g1', tactic: 'simp', into: 'tacticResult' },
+      {
+        snapshot: {
+          data: {
+            goals: {
+              g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+            },
+            $host: {
+              leanState: {
+                fileUri: 'file:///proof.lean',
+                goalPositions: {
+                  g1: {
+                    startLine: 2,
+                    startCol: 2,
+                    endLine: 2,
+                    endCol: 7
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    )
+
+    expect(patches).toHaveLength(1)
+    expect((patches[0] as { value: { succeeded: boolean; errorMessage: string | null } }).value).toMatchObject({
+      succeeded: false,
+      errorMessage: 'adapter unavailable'
+    })
+  })
+
   it('lean.syncGoals preserves goal ids for whitespace-only source changes', async () => {
     const sourceWithWhitespace = [
       'theorem t : True := by',

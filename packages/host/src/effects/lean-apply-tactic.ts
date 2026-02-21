@@ -165,7 +165,14 @@ export const createLeanApplyTacticEffect = (
 
     return patches
   }
-  catch {
-    return [{ op: 'set', path: input.into, value: baseResult }]
+  catch (error) {
+    const message = error instanceof Error && typeof error.message === 'string'
+      ? error.message
+      : 'failed to apply tactic'
+
+    return [{ op: 'set', path: input.into, value: {
+      ...baseResult,
+      errorMessage: message
+    } }]
   }
 }

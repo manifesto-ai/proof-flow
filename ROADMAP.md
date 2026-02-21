@@ -4,13 +4,19 @@
 - 아키텍처 기준: `packages/schema + packages/host + packages/app` 인플레이스 하드컷.
 - 도메인(MEL)은 `Goal/Tactic` 의미만 유지.
 - Lean/LSP/DAG/진단/위치는 `$host.leanState`로 격리.
-- UI는 증명 작업 흐름(Progress/Goal/Tactic/Proof Map) 중심으로 최소화.
+- UI는 증명 작업 흐름(Progress/Goal/Tactic/Proof Map/Lineage) 중심으로 최소화.
 
-## KPI (Proof-Value Loop)
-- `Goal status transition`: `statusChanged / edges` (lineage report에서 최소 1회 이상 증가) — 목표
-- `Action/world integrity`: `lineageLength > 0` and world head monotonically increases on each intent
-- `Replay determinism`: 동일 `action` 시퀀스가 동일 `worldIds`를 생성해야 함
-- `Goal id stability`: 동일 소스/목표 위치에서 `syncGoals` 반복 시 `goalId` 집합 불변
+## KPI Gate List (Proof-Value Evidence)
+- [ ] `open → resolved` 전이가 최소 1회 이상 발생해야 함 (샘플/실행 흐름 기준).
+- [ ] `lineage/world head`가 `syncGoals`/`applyTactic`/`commit`/`dismiss` 인터랙션마다 증가해야 함.
+- [ ] 동일 액션 시퀀스가 동일 라인리지(world IDs)와 상태 스냅샷을 생성해야 함.
+- [ ] `syncGoals` 반복 시 동일 선언/위치에서 `goalId` 집합 불변성(goal-id stability)이 유지돼야 함.
+
+## Gate Status (2.6 기준)
+- [x] `open → resolved` 전이: `tests/lineage.spec.ts`, `tests/proof-loop.spec.ts`에서 검증
+- [x] `lineage/world head` 증가: `tests/lineage.spec.ts`, `tests/runtime-compliance.spec.ts`에서 검증
+- [x] 동일 시퀀스 재현성: `tests/lineage.spec.ts`, `tests/proof-loop.spec.ts`, `scripts/vscode-goal-fidelity-suite.cjs`
+- [x] `goalId` 안정성: `tests/host-effects.spec.ts`, `scripts/vscode-goal-fidelity-suite.cjs`
 
 ## Active Contracts (v2)
 ### MEL actions
@@ -55,38 +61,27 @@
 - [x] `@manifesto-ai/app` → `@manifesto-ai/sdk` 마이그레이션 완료
   - 앱 생성/타입 경로 정합
   - `act` 완료 대기 API를 `completed()` 우선으로 정렬
-  - 도메인 규격 대비 `lean.syncGoals`, `lean.applyTactic` effect 유효성 고정
+  - 도메인 계약 대비 `lean.syncGoals`, `lean.applyTactic` effect 유효성 고정
 - [x] lineage diff 리포트 포맷을 goal 상태 전이 중심으로 교체
 - [x] 테스트 스위트 하드컷 기준 재작성
-- [x] 품질 게이트 통과
-  - `pnpm test`
-  - `pnpm typecheck`
-  - `pnpm build`
-  - `pnpm test:smoke:vscode`
+- [x] P0 항목: 실패 UX 정교화, goalId 안정성, tactic 실패 결과 저장 및 실패사유 전파
+- [x] P1 항목: UI 반응성/스크롤, Proof Map-에디터 동기화 정렬
+- [x] P2 항목: 단일 파일 제약/영속 정책 문서 고정
+- [x] `manifesto-value-evidence` 증거 문서 갱신 (`docs/manifesto-value-evidence-2026-02-21.md`)
 
-## Remaining Work
-### P0 (증명 사용성 필수)
-- [x] 실제 Lean 증명 파일 3종(기본/induction/Mathlib) 회귀 픽스처 고정
-- [x] tactic 실패 UX 정교화 (실패 이유 + dismiss 액션 안내 카드 통합)
-- [x] goal id 안정성 회귀 테스트 강화 (whitespace/반복 sync에서 ID 불변성 검증)
-- [x] `lineageDiffReport`를 증명 세션 리포트 템플릿으로 정리
+### Quality Gates
+- [x] `pnpm test`
+- [x] `pnpm typecheck`
+- [x] `pnpm build`
+- [x] `pnpm test:spike:goal-fidelity`
+- [x] `pnpm test:smoke:vscode`
 
-### P1 (UI/UX 정돈)
-- [x] 패널 스크롤/레이아웃 안정화 (overflow-y:auto + 고정 핵심 카드)
-- [x] Proof Map 노드/goal 선택 → 에디터 reveal 동기화 경로 점검 (E2E 포함)
-- [x] 기본 화면 정보 밀도 축소 완료 (필수 5요소 중심)
-
-### P2 (운영/확장)
-- [x] 리포트 export 경로 표준화 (`reports/` 고정, 환경변수 오버라이드 지원)
-- [x] 단일 파일 범위 밖(멀티파일) 확장 전 선행 제약 문서화 (`docs/limits.md`)
-- [x] World store 영속화는 옵션으로만 실험 (기본 메모리 유지) 정리 (`docs/limits.md`)
-
-### P2 Checklist
-- [ ] 멀티파일 확장 가드와 영속 옵션 가이드라인이 문서로만 남아 있는지 정기 점검
+## P2 Checklist
+- [x] 멀티파일 확장 가드와 영속 옵션 가이드라인이 문서로 반영되어 정합 점검됨
 
 ## Status Checklist for Phase 5
 - [x] 핵심 KPI 계약은 문서화 완료
-- [x] goal 상태 전이/lineage 재현성 자동검증을 위한 실제 샘플 3건 기준치 통과 확인
+- [x] goal 상태 전이/lineage 재현성 자동검증을 위한 실제 샘플 3종 기준치 통과 확인
 - [x] `pnpm test:spike:goal-fidelity` + `pnpm test:smoke:vscode` 정기 수행 체계화
 
 ## Risks
@@ -95,6 +90,6 @@
 3. intent marker(`applying/resolving/syncing`)는 실행 추적에는 유효하지만 비교 테스트에서는 노이즈가 될 수 있음.
 
 ## Immediate Queue
-1. P2 과제 정리: 멀티파일 제약/영속 World 옵션 정책의 구현 전 문서 고정 상태 확인.
-2. `@proof-flow` 스크립트/문서에서 삭제된 액션/효과 레거시 조각 정기 점검.
-3. `proof_flow` 핵심 이슈 반영 결과(핵심값 증거) 공유.
+1. KPI 게이트 4종의 연속 실행 리포트 체인 정렬 (`manifesto-value-evidence` 주기 갱신)
+2. 사용자 피드백을 반영한 실패 케이스(전략 시도 실패, 부분 해소)에 대한 샘플 라이브러리 확장
+3. `proof_flow` 레거시 기록 문서(`docs/ARCHITECTURE-REPORT.md` 등)와 활성 문서 분리 운영 규칙 점검

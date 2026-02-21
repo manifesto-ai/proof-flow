@@ -1,6 +1,6 @@
-# ProofFlow 운영 제약 및 적용 범위
+# ProofFlow 운영 제약 및 적용 범위 (v2.6 hard-cut)
 
-이 문서는 ProofFlow v2 하드컷 버전의 현재 운영 가정과 확장 전 제약을 정리한다.
+이 문서는 ProofFlow v2.6 하드컷 기준의 운영 가정과 확장 전 제약을 정리한다.
 
 ## 1) 처리 범위: 단일 파일(`.lean`) 우선
 
@@ -12,37 +12,33 @@
 
 ### 제외 범위 (v2 하드컷)
 
-다음 항목은 기능이 완성되지 않은 상태이므로 본 단계에서 제외한다.
+다음 항목은 본 단계에서 제외한다.
 
 - 멀티 파일/크로스 파일 DAG 정합성
 - 파일 간 goal 의존성 전파 모델
 - 증명 중간 상태의 교차 파일 재시작 정책
+- 다중 월드 스토어 동시성/병합 정책
 
-제외 이유:
+### 제외 이유
 
-- 현재 Host 파싱/추출 파이프라인은 활성 문서 기준 상태 정렬과 ID 안정성을 전제로 설계됨
-- `syncGoals`의 안정성은 `fileUri` 단위의 반복 동기화로 검증됨
+- 현재 Host 파싱/추출 파이프라인은 활성 문서 단위 상태 정렬과 goalId 안정성을 전제로 설계됨
+- `syncGoals` 안정성은 `fileUri` 반복 동기화 기준으로 검증됨
 
 ## 2) World persistence 정책
 
-현재 기본값은 **메모리 기반 World 상태 유지**이다.
+현재 기본값은 **in-memory** 다.
 
-- `createProofFlowApp` 호출에서 `world` 주입을 기본으로 수행하지 않는다.
-- 기본 경로, 체크포인트 포맷, 병합 정책은 운영하지 않는다.
+- `createProofFlowApp` 기본 생성에서 `world` 주입은 수행하지 않는다.
+- 영속 checkpoint/병합/리플레이 정책은 기본 동작으로 제공하지 않는다.
+- 영속 World는 실험 옵션으로만 허용되며, 실험 시에도 메모리 기본 동작과 동일한 재현성/액션 순서를 유지해야 한다.
 
-### 영속화는 실험 옵션
+## 3) 현재 계약 정합성 가드
 
-- 영속 World는 기본 동작이 아니다.
-- 필요시 별도 실험 설정에서만 도입해야 하며(선택 토글), 본 버전은 기본 동작을 변경하지 않는다.
-- 영속화를 넣을 경우 WorldStore 스킴과 lineage 재현성(`goal` 상태/액션 순서)이 기존 메모리 정책과 동일해야 한다.
+활성 계약은 다음 조합을 기준으로 유지한다.
 
-## 3) 현재 활성 계약으로의 정합성 가드
-
-Active 계약과 충돌하는 레거시 조각은 문서/커맨드/효과에서 제거 상태여야 한다.
-
-- 계약: `syncGoals / applyTactic / commitTactic / dismissTactic / selectGoal`
+- 액션: `syncGoals / applyTactic / commitTactic / dismissTactic / selectGoal`
 - effect: `lean.syncGoals`, `lean.applyTactic`
-- 패널: `stateUpdate` + 아웃바운드 액션 5개
+- 패널: `stateUpdate` + 아웃바운드 5개(`selectGoal`, `applyTactic`, `commitTactic`, `dismissTactic`, `togglePanel`)
 - 커맨드: `proof-flow.hello`, `proof-flow.lineageDiffReport`
 
-해당 조합이 바뀌면 계약 변경으로 간주하고 P1 이전 계획은 재확정해야 한다.
+이 조합이 바뀌면 계약 재협의로 간주한다.
