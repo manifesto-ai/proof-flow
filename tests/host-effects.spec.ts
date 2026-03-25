@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+import { patchPathToDisplayString } from '@manifesto-ai/core'
 import { createLeanApplyTacticEffect } from '../packages/host/src/effects/lean-apply-tactic.js'
 import { createLeanSyncGoalsEffect } from '../packages/host/src/effects/lean-sync-goals.js'
 import { deriveLeanState } from '../packages/host/src/lean/derive.js'
+
+const findPatch = (patches: ReadonlyArray<{ path: unknown }>, path: string) => (
+  patches.find((patch) => patchPathToDisplayString(patch.path as any) === path)
+)
 
 describe('Host effects (lean.*)', () => {
   it('lean.syncGoals writes domain goals and $host.leanState', async () => {
@@ -17,8 +22,10 @@ describe('Host effects (lean.*)', () => {
     const patches = await effect({ into: 'goals' }, {})
 
     expect(patches).toHaveLength(2)
-    expect(patches[0]).toMatchObject({ op: 'set', path: 'goals' })
-    expect(patches[1]).toMatchObject({ op: 'set', path: '$host.leanState' })
+    expect(patches[0]).toMatchObject({ op: 'set' })
+    expect(patchPathToDisplayString(patches[0]!.path as any)).toBe('goals')
+    expect(patches[1]).toMatchObject({ op: 'set' })
+    expect(patchPathToDisplayString(patches[1]!.path as any)).toBe('$host.leanState')
 
     const goals = (patches[0] as { value: Record<string, { status: string }> }).value
     expect(Object.keys(goals).length).toBeGreaterThan(0)
@@ -65,13 +72,13 @@ describe('Host effects (lean.*)', () => {
     )
 
     expect(applyTactic).toHaveBeenCalledTimes(1)
-    const tacticResultPatch = patches.find((patch) => patch.path === 'tacticResult')
+    const tacticResultPatch = findPatch(patches, 'tacticResult')
     expect(tacticResultPatch).toBeDefined()
     expect((tacticResultPatch as { value: { succeeded: boolean; errorMessage: string | null } }).value).toMatchObject({
       succeeded: false,
       errorMessage: 'tactic applied but proof goal unchanged'
     })
-    expect(patches.some((patch) => patch.path === '$host.leanState')).toBe(true)
+    expect(findPatch(patches, '$host.leanState')).toBeDefined()
   })
 
   it('lean.applyTactic converts adapter failure into succeeded=false result and keeps error message', async () => {
@@ -304,8 +311,8 @@ describe('Host effects (lean.*)', () => {
     )
 
     expect(applyTactic).toHaveBeenCalledTimes(1)
-    expect(patches.some((patch) => patch.path === 'tacticResult')).toBe(true)
-    expect(patches.some((patch) => patch.path === '$host.leanState')).toBe(true)
+    expect(findPatch(patches, 'tacticResult')).toBeDefined()
+    expect(findPatch(patches, '$host.leanState')).toBeDefined()
     expect((patches[0] as { value: { succeeded: boolean } }).value.succeeded).toBe(false)
   })
 })

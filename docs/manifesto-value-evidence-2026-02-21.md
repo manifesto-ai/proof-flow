@@ -19,6 +19,11 @@
 
 ## 실행 수단
 
+- 최신 runtime baseline:
+  - SDK entry: `createManifesto`
+  - lineage backend: explicit `createManifestoWorld`
+  - 검증 대상은 app-era facade가 아니라 최신 public SDK + World 조합이다.
+
 - 스크립트 기반 루프:
   - `scripts/vscode-goal-fidelity-suite.cjs` (`pnpm test:spike:goal-fidelity`)
   - `scripts/vscode-proof-attempt-suite.cjs`

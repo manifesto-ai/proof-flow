@@ -2,8 +2,8 @@ import { deriveLeanState } from '../lean/derive.js'
 import type { LeanContext } from '../lean/types.js'
 import {
   asRecord,
-  type EffectPatch,
-  type HostEffectHandler
+  type HostEffectHandler,
+  proofFlowOps
 } from './types.js'
 
 export type CreateLeanSyncGoalsEffectOptions = {
@@ -11,25 +11,21 @@ export type CreateLeanSyncGoalsEffectOptions = {
   now?: () => number
 }
 
-const parseInto = (params: unknown): string | null => {
+const parseInto = (params: unknown): 'goals' | null => {
   const record = asRecord(params)
   const into = record?.into
-  return typeof into === 'string' && into.length > 0 ? into : null
+  return into === 'goals' ? 'goals' : null
 }
 
-const emptyStatePatches = (into: string, now: number): EffectPatch[] => [
-  { op: 'set', path: into, value: {} },
-  {
-    op: 'set',
-    path: '$host.leanState',
-    value: {
-      fileUri: null,
-      dag: { nodes: {}, edges: [] },
-      goalPositions: {},
-      diagnostics: [],
-      lastElaboratedAt: now
-    }
-  }
+const emptyStatePatches = (_into: 'goals', now: number) => [
+  proofFlowOps.set('goals', {}),
+  proofFlowOps.raw.set('$host.leanState', {
+    fileUri: null,
+    dag: { nodes: {}, edges: [] },
+    goalPositions: {},
+    diagnostics: [],
+    lastElaboratedAt: now
+  })
 ]
 
 export const createLeanSyncGoalsEffect = (
@@ -48,7 +44,7 @@ export const createLeanSyncGoalsEffect = (
 
   const derived = deriveLeanState(context, now)
   return [
-    { op: 'set', path: into, value: derived.goals },
-    { op: 'set', path: '$host.leanState', value: derived.hostState }
+    proofFlowOps.set('goals', derived.goals),
+    proofFlowOps.raw.set('$host.leanState', derived.hostState)
   ]
 }

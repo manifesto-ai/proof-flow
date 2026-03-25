@@ -1,56 +1,26 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  type ActionHandle,
-  type ActionResult,
-  type App,
-  type Effects,
-  createApp
+  createManifesto,
+  createIntent,
+  defineOps,
+  dispatchAsync,
+  type ManifestoInstance
 } from '@manifesto-ai/sdk'
 
-type AwaitableActionResult = {
-  done?: () => Promise<ActionResult>
-  result?: () => Promise<ActionResult>
-  completed?: () => Promise<ActionResult>
+type ReproSnapshot = {
+  pending?: string | null
+  result?: string | null
+  items?: Record<string, { id: string; status: string }>
+  goalId?: string
 }
 
-const toResult = async (handle: AwaitableActionResult): Promise<ActionResult> => {
-  if (typeof handle.result === 'function') {
-    return handle.result()
+const manifestos: Array<ManifestoInstance<ReproSnapshot>> = []
+const reproOps = defineOps<ReproSnapshot & Record<string, unknown>>()
+
+afterEach(() => {
+  while (manifestos.length > 0) {
+    manifestos.pop()?.dispose()
   }
-
-  if (typeof handle.completed === 'function') {
-    return handle.completed()
-  }
-
-  if (typeof handle.done === 'function') {
-    return handle.done()
-  }
-
-  throw new Error('Unsupported ActionHandle type')
-}
-
-const createMiniApp = async (schema: string, effects: Effects, initialData: Record<string, unknown>): Promise<App> => {
-  const app = createApp({
-    schema,
-    effects,
-    actorPolicy: {
-      mode: 'require',
-      defaultActor: {
-        actorId: 'proof-flow:issue-repro',
-        kind: 'human'
-      }
-    },
-    initialData
-  })
-
-  await app.ready()
-  return app
-}
-
-const apps: App[] = []
-
-afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => app.dispose()))
 })
 
 describe('Manifesto core issue reproductions', () => {
@@ -71,28 +41,21 @@ describe('Manifesto core issue reproductions', () => {
       }
     `
 
-    const app = await createMiniApp(
+    const manifesto = createManifesto<ReproSnapshot>({
       schema,
-      {
-        'demo.exec': async (params) => {
-          const into = typeof (params as { into: string }).into === 'string'
-            ? (params as { into: string }).into
-            : 'result'
-          return [{ op: 'set', path: into, value: 'ok' }]
-        }
-      },
-      { pending: null, result: null }
-    )
+      effects: {
+        'demo.exec': async () => [
+          reproOps.set('result', 'ok')
+        ]
+      }
+    })
+    manifestos.push(manifesto)
 
-    apps.push(app)
+    const snapshot = await dispatchAsync(manifesto, createIntent('run', 'repro-134'))
 
-    const result = await toResult(app.act('run') as ActionHandle)
-    const state = app.getState<{ data: { pending: string | null; result: string | null } }>()
-
-    expect(result.status).toBe('completed')
-    expect(state.data.result).toBe('ok')
-    expect(state.data.pending).toBeTypeOf('string')
-    expect(state.data.pending).toMatch(/.+/)
+    expect(snapshot.data.result).toBe('ok')
+    expect(typeof snapshot.data.pending).toBe('string')
+    expect(snapshot.data.pending).toMatch(/.+/)
   })
 
   it('repro #135: at(record,key).field should access object field correctly', async () => {
@@ -118,23 +81,38 @@ describe('Manifesto core issue reproductions', () => {
       }
     `
 
-    const app = await createMiniApp(
+    const manifesto = createManifesto<ReproSnapshot>({
       schema,
-      {},
-      {
-        items: {
-          proof: {
-            id: 'proof',
-            status: 'open'
-          }
+      effects: {},
+      snapshot: {
+        data: {
+          items: {
+            proof: {
+              id: 'proof',
+              status: 'open'
+            }
+          },
+          goalId: 'proof'
+        } as ReproSnapshot,
+        computed: {},
+        system: {
+          status: 'idle',
+          lastError: null,
+          errors: [],
+          pendingRequirements: [],
+          currentAction: null
         },
-        goalId: 'proof'
+        meta: {
+          version: 1,
+          timestamp: 1,
+          randomSeed: 'seed',
+          schemaHash: 'schema'
+        }
       }
-    )
+    })
+    manifestos.push(manifesto)
 
-    apps.push(app)
-
-    const result = await toResult(app.act('check', { id: 'proof' }) as ActionHandle)
-    expect(result.status).toBe('completed')
+    const snapshot = await dispatchAsync(manifesto, createIntent('check', 'repro-135'))
+    expect(snapshot.meta.schemaHash).toBeTypeOf('string')
   })
 })

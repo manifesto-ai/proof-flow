@@ -13,7 +13,7 @@
     "paths": {
       "@proof-flow/schema": ["packages/schema/src/index.ts"],
       "@proof-flow/host": ["packages/host/src/index.ts"],
-      "@proof-flow/app": ["packages/app/src/config.ts"]
+      "@proof-flow/app": ["packages/app/src/runtime.ts"]
     }
   }
 }

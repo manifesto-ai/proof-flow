@@ -12,20 +12,20 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0(@vue/compiler-sfc@3.5.27)(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)(vitest@4.0.18(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))
       '@manifesto-ai/compiler':
-        specifier: ^1.6.1
-        version: 1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
+        specifier: 1.7.0
+        version: 1.7.0(@manifesto-ai/core@2.6.1)(@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
       '@manifesto-ai/core':
-        specifier: ^2.4.0
-        version: 2.4.0
+        specifier: 2.6.1
+        version: 2.6.1
       '@manifesto-ai/host':
-        specifier: ^2.2.0
-        version: 2.2.0(@manifesto-ai/core@2.4.0)
+        specifier: 2.3.4
+        version: 2.3.4(@manifesto-ai/core@2.6.1)
       '@manifesto-ai/sdk':
-        specifier: ^1.2.0
-        version: 1.2.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
       '@manifesto-ai/world':
-        specifier: ^2.3.0
-        version: 2.3.0(@manifesto-ai/core@2.4.0)
+        specifier: 2.4.2
+        version: 2.4.2(@manifesto-ai/core@2.6.1)
       '@vscode/test-electron':
         specifier: ^2.5.2
         version: 2.5.2
@@ -42,8 +42,11 @@ importers:
   packages/app:
     dependencies:
       '@manifesto-ai/sdk':
-        specifier: ^1.2.0
-        version: 1.2.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+      '@manifesto-ai/world':
+        specifier: 2.4.2
+        version: 2.4.2(@manifesto-ai/core@2.6.1)
       '@proof-flow/host':
         specifier: workspace:*
         version: link:../host
@@ -105,6 +108,9 @@ importers:
 
   packages/host:
     dependencies:
+      '@manifesto-ai/sdk':
+        specifier: 2.0.0
+        version: 2.0.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
       '@proof-flow/schema':
         specifier: workspace:*
         version: link:../schema
@@ -614,6 +620,9 @@ packages:
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
+  '@jridgewell/remapping@2.3.5':
+    resolution: {integrity: sha512-LI9u/+laYG4Ds1TDKSJW2YPrIlcVYOwi2fUC6xB43lueCjgxV4lffOCZCtYFiH6TNOX+tQKXx97T4IKHbhyHEQ==}
+
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
     engines: {node: '>=6.0.0'}
@@ -624,52 +633,39 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@manifesto-ai/compiler@1.6.1':
-    resolution: {integrity: sha512-MsfGiGV8mVU04MCuloIB06gk7VCnBhxgxXg1VdN+5CwGbqtB7f/uvAnN2CkaQbhW06Dd70QMOEgnGKNYuSM/Hg==}
+  '@manifesto-ai/compiler@1.7.0':
+    resolution: {integrity: sha512-ZOGHXoaYp9QrlmtBOGBqO1BkYHL3SI3vXFa3FPQIGQQMmsGel5pFsSeVo30h05sPf9lwVz+YDTpmewnMiyEyzQ==}
     peerDependencies:
       '@anthropic-ai/sdk': ^0.26.0
+      '@manifesto-ai/codegen': ^0.1.0
       '@manifesto-ai/core': ^2.0.0
       '@manifesto-ai/host': ^2.0.0
       openai: ^4.0.0
       vite: ^5.0.0 || ^6.0.0 || ^7.0.0
-      webpack: ^5.0.0
       zod: ^4.3.6
     peerDependenciesMeta:
       '@anthropic-ai/sdk':
+        optional: true
+      '@manifesto-ai/codegen':
         optional: true
       openai:
         optional: true
       vite:
         optional: true
-      webpack:
-        optional: true
 
-  '@manifesto-ai/core@2.4.0':
-    resolution: {integrity: sha512-Hys6dV/Ur+7+LIbQdw/fG79grhnmAV3FyjQHUcejKxDoetMTqFSuG1fDYis/xU3tZ7FMHt0jgjII0FJRlSEInA==}
+  '@manifesto-ai/core@2.6.1':
+    resolution: {integrity: sha512-/Gvj3tb55SxjufHaXjobz0OQETjl3uWBWi7U5KIewt2lxULS4vgYfqiRf07ITwlGbi0HFwQL03kKnSCk+6m1ag==}
 
-  '@manifesto-ai/host@2.2.0':
-    resolution: {integrity: sha512-8kq181Uf4/G37vBLXEi6V6jq5qLCJw7snNfkFEb7mByvrK+JqxDh/ntEOr6c3nHd6lZ87V6WUR+cQet+/yYSBQ==}
+  '@manifesto-ai/host@2.3.4':
+    resolution: {integrity: sha512-oPpOs99obM9ba82yFw6F5R8jN8d9mVuhcWbhWCuqHgd2BuEfbayiF+3rPmfIg1oAPhJ/uV3NRy5r4Fd/Wrh96g==}
     peerDependencies:
       '@manifesto-ai/core': ^2.0.0
 
-  '@manifesto-ai/host@2.3.1':
-    resolution: {integrity: sha512-iEfIUbRJo852ABvA4kWKt1sfhCAnSjCn6fWhcVk3ALLd8hrT5d2mjBBHsUNiER7dP1gEkehmkEEid5xhp19sAw==}
-    peerDependencies:
-      '@manifesto-ai/core': ^2.0.0
+  '@manifesto-ai/sdk@2.0.0':
+    resolution: {integrity: sha512-tV/2klHy/zhPVD18WHTRVf2FN8suPManYZqt0iWVBO4YnB0eHuwhs3Xh4NlB3x4GPl/GabPZ+ATchy53O4mTZA==}
 
-  '@manifesto-ai/runtime@0.1.2':
-    resolution: {integrity: sha512-FGkws1HRiVChlE+KPezFSqWUGHDBZRw8ciGbarDpeLClMjcoXZlZ3D+jVsSUAScautlLETTfQwZkympdJ1m8Pg==}
-
-  '@manifesto-ai/sdk@1.2.0':
-    resolution: {integrity: sha512-E2QUOmCQmcvfxQKKVO9r+mVuwRnWGKbl85dC2yIyMg7Yand9dveEQNCQFFb7tVKrhhtDhJJK0K+l2vdeJJj20A==}
-
-  '@manifesto-ai/world@2.3.0':
-    resolution: {integrity: sha512-9+dY01xthOPrj3fB82W17w4cMcP/kB34XRH4zjZc6pEvsLBeqY1f1PQWp8jnns5Gu4nSCoE25WVhD6u7PLSsIg==}
-    peerDependencies:
-      '@manifesto-ai/core': ^2.0.0
-
-  '@manifesto-ai/world@2.4.0':
-    resolution: {integrity: sha512-L0bX9+OmyV3YAo+tohGHcgF1hymqdxWwmAfYw5SAej8Nsc+kKCnp4/Mprtk3VZtLU30cvCR/5pZKAOQWuZNS/A==}
+  '@manifesto-ai/world@2.4.2':
+    resolution: {integrity: sha512-mbwO0FZ95SYzpi+Y1uXUPMgCmdK0WQBgUtDDa/Pnu8QJXXB2jfELcfFhq6P+56nipqIrsghNwX91A40FZ1+Q2w==}
     peerDependencies:
       '@manifesto-ai/core': ^2.0.0
 
@@ -2121,13 +2117,13 @@ packages:
       ink: '>=4.0.0'
       react: '>=18.0.0'
 
-  ink@6.6.0:
-    resolution: {integrity: sha512-QDt6FgJxgmSxAelcOvOHUvFxbIUjVpCH5bx+Slvc5m7IEcpGt3dYwbz/L+oRnqEGeRvwy1tineKK4ect3nW1vQ==}
+  ink@6.8.0:
+    resolution: {integrity: sha512-sbl1RdLOgkO9isK42WCZlJCFN9hb++sX9dsklOvfd1YQ3bQ2AiFu12Q6tFlr0HvEUvzraJntQCCpfEoUe9DSzA==}
     engines: {node: '>=20'}
     peerDependencies:
       '@types/react': '>=19.0.0'
       react: '>=19.0.0'
-      react-devtools-core: ^6.1.2
+      react-devtools-core: '>=6.1.2'
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -2779,6 +2775,10 @@ packages:
     resolution: {integrity: sha512-iOBWFgUX7caIZiuutICxVgX1SdxwAVFFKwt1EvMYYec/NWO5meOJ6K5uQxhrYBdQJne4KxiqZc+KptFOWFSI9w==}
     engines: {node: '>=18'}
 
+  slice-ansi@8.0.0:
+    resolution: {integrity: sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg==}
+    engines: {node: '>=20'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -2846,6 +2846,10 @@ packages:
     resolution: {integrity: sha512-Bh7QjT8/SuKUIfObSXNHNSK6WHo6J1tHCqJsuaFDP7gP0fkzSfTxI8y85JrppZ0h8l0maIgc2tfuZQ6/t3GtnQ==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
+  tagged-tag@1.0.0:
+    resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
+    engines: {node: '>=20'}
+
   tailwind-merge@3.4.0:
     resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
 
@@ -2857,6 +2861,10 @@ packages:
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
     engines: {node: '>=6'}
+
+  terminal-size@4.0.1:
+    resolution: {integrity: sha512-avMLDQpUI9I5XFrklECw1ZEUPJhqzcwSWsyyI8blhRLT+8N1jLJWLWWYQpB2q2xthq8xDvjZPISVh53T/+CLYQ==}
+    engines: {node: '>=18'}
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -2917,9 +2925,9 @@ packages:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
 
-  type-fest@4.41.0:
-    resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
-    engines: {node: '>=16'}
+  type-fest@5.5.0:
+    resolution: {integrity: sha512-PlBfpQwiUvGViBNX84Yxwjsdhd1TUlXr6zjX7eoirtCPIr08NAmxwa+fcYBTeRQxHo9YC9wwF3m9i700sHma8g==}
+    engines: {node: '>=20'}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -2943,6 +2951,10 @@ packages:
 
   unist-util-visit@5.1.0:
     resolution: {integrity: sha512-m+vIdyeCOpdr/QeQCu2EzxX/ohgS8KbnPDgFni4dQsfSCtpz8UqDyY5GjRru8PDKuYn7Fq19j1CQ+nJSsGKOzg==}
+
+  unplugin@3.0.0:
+    resolution: {integrity: sha512-0Mqk3AT2TZCXWKdcoaufeXNukv2mTrEZExeXlHIOZXdqYoHHr4n51pymnwV8x2BOVxwXbK2HLlI7usrqMpycdg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
 
   update-browserslist-db@1.2.3:
     resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
@@ -3096,6 +3108,9 @@ packages:
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0
 
+  webpack-virtual-modules@0.6.2:
+    resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
+
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
@@ -3106,9 +3121,9 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
-  widest-line@5.0.0:
-    resolution: {integrity: sha512-c9bZp7b5YtRj2wOe6dlj32MK+Bx/M/d+9VB2SHM1OtsUHR0aV0tdP6DWh/iMt0kWi1t5g1Iudu6hQRNd1A4PVA==}
-    engines: {node: '>=18'}
+  widest-line@6.0.0:
+    resolution: {integrity: sha512-U89AsyEeAsyoF0zVJBkG9zBgekjgjK7yk9sje3F4IQpXBJ10TF6ByLlIfjMhcmHMJgHZI4KHt4rdNfktzxIAMA==}
+    engines: {node: '>=20'}
 
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
@@ -3538,6 +3553,11 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
       '@jridgewell/trace-mapping': 0.3.31
 
+  '@jridgewell/remapping@2.3.5':
+    dependencies:
+      '@jridgewell/gen-mapping': 0.3.13
+      '@jridgewell/trace-mapping': 0.3.31
+
   '@jridgewell/resolve-uri@3.1.2': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
@@ -3547,33 +3567,16 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@manifesto-ai/compiler@1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+  '@manifesto-ai/compiler@1.7.0(@manifesto-ai/core@2.6.1)(@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
     dependencies:
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/host': 2.2.0(@manifesto-ai/core@2.4.0)
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
-      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      '@manifesto-ai/core': 2.6.1
+      '@manifesto-ai/host': 2.3.4(@manifesto-ai/core@2.6.1)
+      ink: 6.8.0(@types/react@19.2.13)(react@19.2.4)
+      ink-select-input: 6.2.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      ink-spinner: 5.0.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
       meow: 14.0.0
       react: 19.2.4
-      zod: 4.3.6
-    optionalDependencies:
-      vite: 7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2)
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - react-devtools-core
-      - utf-8-validate
-
-  '@manifesto-ai/compiler@1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
-      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      meow: 14.0.0
-      react: 19.2.4
+      unplugin: 3.0.0
       zod: 4.3.6
     optionalDependencies:
       vite: 5.4.21(@types/node@24.10.11)
@@ -3583,15 +3586,16 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
-  '@manifesto-ai/compiler@1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+  '@manifesto-ai/compiler@1.7.0(@manifesto-ai/core@2.6.1)(@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
     dependencies:
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
-      ink-select-input: 6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
-      ink-spinner: 5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      '@manifesto-ai/core': 2.6.1
+      '@manifesto-ai/host': 2.3.4(@manifesto-ai/core@2.6.1)
+      ink: 6.8.0(@types/react@19.2.13)(react@19.2.4)
+      ink-select-input: 6.2.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
+      ink-spinner: 5.0.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4)
       meow: 14.0.0
       react: 19.2.4
+      unplugin: 3.0.0
       zod: 4.3.6
     optionalDependencies:
       vite: 7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2)
@@ -3601,90 +3605,49 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
-  '@manifesto-ai/core@2.4.0': {}
+  '@manifesto-ai/core@2.6.1': {}
 
-  '@manifesto-ai/host@2.2.0(@manifesto-ai/core@2.4.0)':
+  '@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1)':
     dependencies:
-      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/core': 2.6.1
 
-  '@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0)':
+  '@manifesto-ai/sdk@2.0.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
     dependencies:
-      '@manifesto-ai/core': 2.4.0
-
-  '@manifesto-ai/runtime@0.1.2(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/compiler': 1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
-      '@manifesto-ai/world': 2.3.0(@manifesto-ai/core@2.4.0)
+      '@manifesto-ai/compiler': 1.7.0(@manifesto-ai/core@2.6.1)(@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1))(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
+      '@manifesto-ai/core': 2.6.1
+      '@manifesto-ai/host': 2.3.4(@manifesto-ai/core@2.6.1)
+      '@manifesto-ai/world': 2.4.2(@manifesto-ai/core@2.6.1)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
+      - '@manifesto-ai/codegen'
       - '@types/react'
       - bufferutil
       - openai
       - react-devtools-core
       - utf-8-validate
       - vite
-      - webpack
       - zod
 
-  '@manifesto-ai/runtime@0.1.2(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
+  '@manifesto-ai/sdk@2.0.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
     dependencies:
-      '@manifesto-ai/compiler': 1.6.1(@manifesto-ai/core@2.4.0)(@manifesto-ai/host@2.3.1(@manifesto-ai/core@2.4.0))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/host': 2.3.1(@manifesto-ai/core@2.4.0)
-      '@manifesto-ai/world': 2.3.0(@manifesto-ai/core@2.4.0)
+      '@manifesto-ai/compiler': 1.7.0(@manifesto-ai/core@2.6.1)(@manifesto-ai/host@2.3.4(@manifesto-ai/core@2.6.1))(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
+      '@manifesto-ai/core': 2.6.1
+      '@manifesto-ai/host': 2.3.4(@manifesto-ai/core@2.6.1)
+      '@manifesto-ai/world': 2.4.2(@manifesto-ai/core@2.6.1)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
+      - '@manifesto-ai/codegen'
       - '@types/react'
       - bufferutil
       - openai
       - react-devtools-core
       - utf-8-validate
       - vite
-      - webpack
       - zod
 
-  '@manifesto-ai/sdk@1.2.0(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)':
+  '@manifesto-ai/world@2.4.2(@manifesto-ai/core@2.6.1)':
     dependencies:
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/runtime': 0.1.2(@types/react@19.2.13)(vite@5.4.21(@types/node@24.10.11))(zod@4.3.6)
-      '@manifesto-ai/world': 2.4.0(@manifesto-ai/core@2.4.0)
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-      - '@types/react'
-      - bufferutil
-      - openai
-      - react-devtools-core
-      - utf-8-validate
-      - vite
-      - webpack
-      - zod
-
-  '@manifesto-ai/sdk@1.2.0(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)':
-    dependencies:
-      '@manifesto-ai/core': 2.4.0
-      '@manifesto-ai/runtime': 0.1.2(@types/react@19.2.13)(vite@7.3.1(@types/node@24.10.11)(jiti@1.21.7)(yaml@2.8.2))(zod@4.3.6)
-      '@manifesto-ai/world': 2.4.0(@manifesto-ai/core@2.4.0)
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-      - '@types/react'
-      - bufferutil
-      - openai
-      - react-devtools-core
-      - utf-8-validate
-      - vite
-      - webpack
-      - zod
-
-  '@manifesto-ai/world@2.3.0(@manifesto-ai/core@2.4.0)':
-    dependencies:
-      '@manifesto-ai/core': 2.4.0
-      uuid: 13.0.0
-
-  '@manifesto-ai/world@2.4.0(@manifesto-ai/core@2.4.0)':
-    dependencies:
-      '@manifesto-ai/core': 2.4.0
+      '@manifesto-ai/core': 2.6.1
       uuid: 13.0.0
 
   '@nodelib/fs.scandir@2.1.5':
@@ -5125,20 +5088,20 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ink-select-input@6.2.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4):
+  ink-select-input@6.2.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4):
     dependencies:
       figures: 6.1.0
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
+      ink: 6.8.0(@types/react@19.2.13)(react@19.2.4)
       react: 19.2.4
       to-rotated: 1.0.0
 
-  ink-spinner@5.0.0(ink@6.6.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4):
+  ink-spinner@5.0.0(ink@6.8.0(@types/react@19.2.13)(react@19.2.4))(react@19.2.4):
     dependencies:
       cli-spinners: 2.9.2
-      ink: 6.6.0(@types/react@19.2.13)(react@19.2.4)
+      ink: 6.8.0(@types/react@19.2.13)(react@19.2.4)
       react: 19.2.4
 
-  ink@6.6.0(@types/react@19.2.13)(react@19.2.4):
+  ink@6.8.0(@types/react@19.2.13)(react@19.2.4):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.2.4
       ansi-escapes: 7.3.0
@@ -5155,12 +5118,14 @@ snapshots:
       patch-console: 2.0.0
       react: 19.2.4
       react-reconciler: 0.33.0(react@19.2.4)
+      scheduler: 0.27.0
       signal-exit: 3.0.7
-      slice-ansi: 7.1.2
+      slice-ansi: 8.0.0
       stack-utils: 2.0.6
       string-width: 8.1.1
-      type-fest: 4.41.0
-      widest-line: 5.0.0
+      terminal-size: 4.0.1
+      type-fest: 5.5.0
+      widest-line: 6.0.0
       wrap-ansi: 9.0.2
       ws: 8.19.0
       yoga-layout: 3.2.1
@@ -5963,6 +5928,11 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
+  slice-ansi@8.0.0:
+    dependencies:
+      ansi-styles: 6.2.3
+      is-fullwidth-code-point: 5.1.0
+
   source-map-js@1.2.1: {}
 
   spdx-exceptions@2.5.0: {}
@@ -6027,6 +5997,8 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.2.9
 
+  tagged-tag@1.0.0: {}
+
   tailwind-merge@3.4.0: {}
 
   tailwindcss@3.4.19(yaml@2.8.2):
@@ -6058,6 +6030,8 @@ snapshots:
       - yaml
 
   tapable@2.3.0: {}
+
+  terminal-size@4.0.1: {}
 
   thenify-all@1.6.0:
     dependencies:
@@ -6110,7 +6084,9 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
-  type-fest@4.41.0: {}
+  type-fest@5.5.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   typescript@5.9.3: {}
 
@@ -6136,6 +6112,12 @@ snapshots:
       '@types/unist': 3.0.3
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.0.2
+
+  unplugin@3.0.0:
+    dependencies:
+      '@jridgewell/remapping': 2.3.5
+      picomatch: 4.0.3
+      webpack-virtual-modules: 0.6.2
 
   update-browserslist-db@1.2.3(browserslist@4.28.1):
     dependencies:
@@ -6242,6 +6224,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  webpack-virtual-modules@0.6.2: {}
+
   which@2.0.2:
     dependencies:
       isexe: 2.0.0
@@ -6251,9 +6235,9 @@ snapshots:
       siginfo: 2.0.0
       stackback: 0.0.2
 
-  widest-line@5.0.0:
+  widest-line@6.0.0:
     dependencies:
-      string-width: 7.2.0
+      string-width: 8.1.1
 
   word-wrap@1.2.5: {}
 

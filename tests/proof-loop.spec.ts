@@ -1,50 +1,17 @@
-import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App, Effects } from '@manifesto-ai/sdk'
-import type { ProofFlowState } from '../packages/schema/src/index.js'
 import type { ProofLoopReport, ProofLoopStep, ProofLoopStepType } from './fixtures/proof-loop.types.js'
-import { createProofFlowApp } from '../packages/app/src/config.js'
+import { createTestRuntime, proofFlowOps } from './helpers/proof-flow.js'
 
-const domainMelPromise = readFile(
-  new URL('../packages/schema/domain.mel', import.meta.url),
-  'utf8'
-)
+const runtimes: Array<{ dispose: () => void }> = []
 
-type ActionResult = {
-  completed?: () => Promise<unknown>
-  done?: () => Promise<unknown>
-}
-
-const completeAction = async (result: ActionResult): Promise<void> => {
-  if (result?.completed) {
-    await result.completed()
-    return
+afterEach(() => {
+  while (runtimes.length > 0) {
+    runtimes.pop()?.dispose()
   }
-
-  if (result?.done) {
-    await result.done()
-  }
-}
-
-const apps: App[] = []
-
-const createApp = async (effects: Effects): Promise<App> => {
-  const schema = await domainMelPromise
-  const app = createProofFlowApp({
-    schema,
-    effects
-  })
-  await app.ready()
-  apps.push(app)
-  return app
-}
-
-afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => app.dispose()))
 })
 
 const runProofLoop = async (
-  app: App,
+  runtime: Awaited<ReturnType<typeof createTestRuntime>>,
   steps: ReadonlyArray<ProofLoopStepType>
 ): Promise<ProofLoopReport> => {
   const startedAt = Date.now()
@@ -58,44 +25,42 @@ const runProofLoop = async (
       applyCount += 1
       const tactic = applyCount === 1 ? 'exact True.intro' : 'simp'
       input = { goalId: 'g1', tactic }
-      await completeAction(app.act('applyTactic', input) as ActionResult)
+      await runtime.dispatch('applyTactic', input, 'ui')
     }
 
     if (phase === 'select') {
       input = { goalId: 'g1' }
-      await completeAction(app.act('selectGoal', input) as ActionResult)
+      await runtime.dispatch('selectGoal', input, 'ui')
     }
 
     if (phase === 'commit') {
-      await completeAction(app.act('commitTactic') as ActionResult)
+      await runtime.dispatch('commitTactic', undefined, 'ui')
     }
 
     if (phase === 'dismiss') {
-      await completeAction(app.act('dismissTactic') as ActionResult)
+      await runtime.dispatch('dismissTactic', undefined, 'ui')
     }
 
     if (phase === 'sync') {
-      await completeAction(app.act('syncGoals') as ActionResult)
+      await runtime.dispatch('syncGoals', undefined, 'system')
     }
 
-    const normalized = app.getState<ProofFlowState>()
-    const goals = Object.values(normalized.data.goals)
-
-    const expected = {
-      openGoals: goals.filter((goal) => goal.status === 'open').length,
-      failedGoals: goals.filter((goal) => goal.status === 'failed').length,
-      tacticPending: normalized.data.applyingTactic !== null && normalized.data.tacticResult === null,
-      succeeded: normalized.data.tacticResult?.succeeded
-    }
+    const snapshot = runtime.getSnapshot()
+    const goals = Object.values(snapshot.data.goals)
 
     executed.push({
       phase,
       input,
-      expected
+      expected: {
+        openGoals: goals.filter((goal) => goal.status === 'open').length,
+        failedGoals: goals.filter((goal) => goal.status === 'failed').length,
+        tacticPending: snapshot.data.applyingTactic !== null && snapshot.data.tacticResult === null,
+        succeeded: snapshot.data.tacticResult?.succeeded
+      }
     })
   }
 
-  const finalState = app.getState<ProofFlowState>()
+  const finalState = runtime.getSnapshot()
   const finalGoals = Object.values(finalState.data.goals)
 
   return {
@@ -111,40 +76,38 @@ const runProofLoop = async (
   }
 }
 
-describe('Proof loop loop report', () => {
+describe('Proof loop report', () => {
   it('captures success + dismiss flow with summary counts', async () => {
-    const app = await createApp({
-      'lean.syncGoals': async (params) => {
-        const into = (params as { into: string }).into
-        return [{
-          op: 'set',
-          path: into,
-          value: {
+    let syncCount = 0
+    const runtime = await createTestRuntime({
+      'lean.syncGoals': async () => {
+        syncCount += 1
+        return [
+          proofFlowOps.set('goals', {
             g1: {
               id: 'g1',
               statement: '⊢ True',
-              status: 'open'
+              status: syncCount > 1 ? 'resolved' : 'open'
             }
-          }
-        }]
+          })
+        ]
       },
       'lean.applyTactic': async (params: unknown) => {
         const tactic = (params as { tactic?: string } | undefined)?.tactic
-        return {
-          op: 'set',
-          path: 'tacticResult',
-          value: {
+        return [
+          proofFlowOps.set('tacticResult', {
             goalId: 'g1',
             tactic: tactic ?? 'simp',
             succeeded: tactic === 'exact True.intro',
             errorMessage: null,
             newGoalIds: []
-          }
-        }
+          })
+        ]
       }
-    } as Effects)
+    })
+    runtimes.push(runtime)
 
-    const report = await runProofLoop(app, [
+    const report = await runProofLoop(runtime, [
       'sync',
       'select',
       'apply',
@@ -161,34 +124,28 @@ describe('Proof loop loop report', () => {
 
   it('replays same loop sequence for deterministic reporting shape', async () => {
     const effectSet = {
-      'lean.syncGoals': async (params) => {
-        const into = (params as { into: string }).into
-        return [{
-          op: 'set',
-          path: into,
-          value: {
-            g1: { id: 'g1', statement: '⊢ True', status: 'open' }
-          }
-        }]
-      },
+      'lean.syncGoals': async () => [
+        proofFlowOps.set('goals', {
+          g1: { id: 'g1', statement: '⊢ True', status: 'open' }
+        })
+      ],
       'lean.applyTactic': async (params: unknown) => {
         const tactic = (params as { tactic?: string } | undefined)?.tactic
-        return {
-          op: 'set',
-          path: 'tacticResult',
-          value: {
+        return [
+          proofFlowOps.set('tacticResult', {
             goalId: 'g1',
             tactic: tactic ?? 'simp',
             succeeded: tactic === 'exact True.intro',
             errorMessage: null,
             newGoalIds: []
-          }
-        }
+          })
+        ]
       }
     }
 
-    const first = await createApp(effectSet)
-    const second = await createApp(effectSet)
+    const first = await createTestRuntime(effectSet)
+    const second = await createTestRuntime(effectSet)
+    runtimes.push(first, second)
 
     const firstReport = await runProofLoop(first, ['sync', 'select', 'apply', 'commit', 'dismiss'])
     const secondReport = await runProofLoop(second, ['sync', 'select', 'apply', 'commit', 'dismiss'])

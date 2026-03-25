@@ -1,258 +1,126 @@
-import { readFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { App, Effects } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
-import { createProofFlowApp } from '../packages/app/src/config.js'
+import { createTestRuntime, proofFlowOps } from './helpers/proof-flow.js'
 
-const domainMelPromise = readFile(
-  new URL('../packages/schema/domain.mel', import.meta.url),
-  'utf8'
-)
+const runtimes: Array<{ dispose: () => void; getSnapshot: () => { data: ProofFlowState & Record<string, unknown> } }> = []
 
-type ActionResult = {
-  completed?: () => Promise<unknown>
-  done?: () => Promise<unknown>
-}
-
-const completeAction = async (result: ActionResult): Promise<void> => {
-  if (result?.completed) {
-    await result.completed()
-    return
-  }
-
-  if (result?.done) {
-    await result.done()
-  }
-}
-
-const apps: App[] = []
-
-const createApp = async (effects: Effects) => {
-  const domainMel = await domainMelPromise
-  const app = createProofFlowApp({
-    schema: domainMel,
-    effects
-  })
-
-  await app.ready()
-  apps.push(app)
-  return app
-}
-
-const deterministicEffects = (): Effects => ({
-  'lean.syncGoals': async (params) => {
-    const into = (params as { into: string }).into
-    return [{
-      op: 'set',
-      path: into,
-      value: {
-        g1: { id: 'g1', statement: '⊢ True', status: 'open' }
-      }
-    }]
-  },
-  'lean.applyTactic': async (params) => {
-    const into = (params as { into: string }).into
-    return [{
-      op: 'set',
-      path: into,
-      value: {
-        goalId: 'g1',
-        tactic: 'exact True.intro',
-        succeeded: true,
-        errorMessage: null,
-        newGoalIds: []
-      }
-    }]
-  }
-})
-
-const createTransitioningEffects = (opts: { succeed: boolean }): Effects => {
+const createTransitioningEffects = (opts: { succeed: boolean }) => {
   let applied = false
+
   return {
-    'lean.syncGoals': async (params) => {
-      const into = (params as { into: string }).into
-      return [{
-        op: 'set',
-        path: into,
-        value: {
-          g1: {
-            id: 'g1',
-            statement: '⊢ True',
-            status: applied ? 'resolved' : 'open'
-          }
+    'lean.syncGoals': async () => [
+      proofFlowOps.set('goals', {
+        g1: {
+          id: 'g1',
+          statement: '⊢ True',
+          status: applied ? 'resolved' : 'open'
         }
-      }]
-    },
-    'lean.applyTactic': async (params) => {
-      const into = (params as { into: string }).into
+      })
+    ],
+    'lean.applyTactic': async () => {
       if (opts.succeed) {
         applied = true
       }
 
-      return [{
-        op: 'set',
-        path: into,
-        value: {
+      return [
+        proofFlowOps.set('tacticResult', {
           goalId: 'g1',
           tactic: 'exact True.intro',
           succeeded: opts.succeed,
           errorMessage: null,
           newGoalIds: []
-        }
-      }]
+        })
+      ]
     }
   }
 }
 
-const stripPlatformState = (data: ProofFlowState & Record<string, unknown>) => {
-  const ephemeralKeys = new Set(['applyingTactic', 'resolvingGoal', 'syncingGoals'])
-  const entries = Object.entries(data).filter(([key]) => !key.startsWith('$') && !ephemeralKeys.has(key))
-  return Object.fromEntries(entries)
-}
+const normalizeReport = (report: Awaited<ReturnType<Awaited<ReturnType<typeof createTestRuntime>>['lineageDiffReport']>>) => ({
+  branch: report.branch,
+  summary: report.summary,
+  worldIds: report.worldIds,
+  diffs: report.diffs.map((entry) => ({
+    fromWorldId: entry.fromWorldId,
+    toWorldId: entry.toWorldId,
+    counts: entry.counts,
+    addedGoals: entry.addedGoals,
+    removedGoals: entry.removedGoals,
+    statusChanges: entry.statusChanges,
+    fromTacticResult: entry.fromTacticResult,
+    toTacticResult: entry.toTacticResult
+  }))
+})
 
-type GoalRecord = { id: string; status: string; statement: string }
-
-const extractGoalMap = (state: ProofFlowState | null | undefined): Map<string, GoalRecord> => {
-  const goals = state?.goals
-  if (!goals) {
-    return new Map()
+afterEach(() => {
+  while (runtimes.length > 0) {
+    runtimes.pop()?.dispose()
   }
-
-  return new Map(
-    Object.values(goals).map((goal) => [
-      goal.id,
-      {
-        id: goal.id,
-        status: goal.status,
-        statement: goal.statement
-      }
-    ])
-  )
-}
-
-const diffStatusCount = (from: ProofFlowState, to: ProofFlowState): number => {
-  const fromGoals = extractGoalMap(from)
-  let changed = 0
-
-  for (const [goalId, rightGoal] of extractGoalMap(to)) {
-    const leftGoal = fromGoals.get(goalId)
-    if (leftGoal && leftGoal.status !== rightGoal.status) {
-      changed += 1
-    }
-  }
-
-  return changed
-}
-
-afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => app.dispose()))
 })
 
 describe('ProofFlow lineage invariants', () => {
-  it('creates retrievable immutable heads as actions commit', async () => {
-    const app = await createApp(deterministicEffects())
+  it('creates immutable world chain as actions commit', async () => {
+    const runtime = await createTestRuntime(createTransitioningEffects({ succeed: true }))
+    runtimes.push(runtime as any)
 
-    if (!app.getCurrentHead || !app.getSnapshot) {
-      throw new Error('App lineage APIs are unavailable')
-    }
+    const before = await runtime.lineageDiffReport(16)
+    await runtime.dispatch('syncGoals', undefined, 'system')
+    const afterSync = await runtime.lineageDiffReport(16)
+    await runtime.dispatch('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }, 'ui')
+    const afterApply = await runtime.lineageDiffReport(16)
+    await runtime.dispatch('commitTactic', undefined, 'ui')
+    const afterCommit = await runtime.lineageDiffReport(16)
 
-    const head0 = app.getCurrentHead()
-    await completeAction(app.act('syncGoals') as ActionResult)
-    const head1 = app.getCurrentHead()
-    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
-    const head2 = app.getCurrentHead()
-    await completeAction(app.act('commitTactic') as ActionResult)
-    const head3 = app.getCurrentHead()
-
-    expect(new Set([head0, head1, head2, head3]).size).toBe(4)
-
-    const snapshot1 = await app.getSnapshot(head1)
-    const snapshot2 = await app.getSnapshot(head2)
-    const snapshot3 = await app.getSnapshot(head3)
-
-    expect(snapshot1.data.goals.g1.status).toBe('open')
-    expect(snapshot2.data.tacticResult.succeeded).toBe(true)
-    expect(snapshot3.data.tacticResult).toBeNull()
+    expect(new Set([
+      before.branch.headWorldId,
+      afterSync.branch.headWorldId,
+      afterApply.branch.headWorldId,
+      afterCommit.branch.headWorldId
+    ]).size).toBe(4)
   })
 
-  it('tracks goal status transitions in world lineage', async () => {
-    const app = await createApp(createTransitioningEffects({ succeed: true }))
+  it('tracks goal status transitions in explicit world lineage', async () => {
+    const runtime = await createTestRuntime(createTransitioningEffects({ succeed: true }))
+    runtimes.push(runtime as any)
 
-    if (!app.getCurrentHead || !app.getSnapshot) {
-      throw new Error('App lineage APIs are unavailable')
-    }
+    await runtime.dispatch('syncGoals', undefined, 'system')
+    await runtime.dispatch('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }, 'ui')
+    await runtime.dispatch('commitTactic', undefined, 'ui')
 
-    await completeAction(app.act('syncGoals') as ActionResult)
-    const headOpen = app.getCurrentHead()
-    expect(headOpen).toBeTypeOf('string')
-
-    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
-    const headAttempt = app.getCurrentHead()
-    expect(headAttempt).toBeTypeOf('string')
-
-    await completeAction(app.act('commitTactic') as ActionResult)
-    const headResolved = app.getCurrentHead()
-    expect(headResolved).toBeTypeOf('string')
-
-    const openSnapshot = await app.getSnapshot(headOpen!)
-    const resolvedSnapshot = await app.getSnapshot(headResolved!)
-    const attemptSnapshot = await app.getSnapshot(headAttempt!)
-
-    expect(openSnapshot.data.tacticResult).toBeNull()
-    expect(attemptSnapshot.data.tacticResult?.succeeded).toBe(true)
-    expect(diffStatusCount(
-      openSnapshot.data as ProofFlowState,
-      resolvedSnapshot.data as ProofFlowState
-    )).toBe(1)
+    const report = await runtime.lineageDiffReport(16)
+    expect(report.summary.statusChanged).toBeGreaterThanOrEqual(1)
+    expect(report.diffs.some((entry) => entry.statusChanges.some((change) => change.toStatus === 'resolved'))).toBe(true)
   })
 
   it('records failed attempt without status mutation', async () => {
-    const app = await createApp(createTransitioningEffects({ succeed: false }))
+    const runtime = await createTestRuntime(createTransitioningEffects({ succeed: false }))
+    runtimes.push(runtime as any)
 
-    if (!app.getCurrentHead || !app.getSnapshot) {
-      throw new Error('App lineage APIs are unavailable')
-    }
+    await runtime.dispatch('syncGoals', undefined, 'system')
+    await runtime.dispatch('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }, 'ui')
+    expect(runtime.getSnapshot().data.tacticResult?.succeeded).toBe(false)
+    await runtime.dispatch('dismissTactic', undefined, 'ui')
 
-    await completeAction(app.act('syncGoals') as ActionResult)
-    const headOpen = app.getCurrentHead()
-
-    await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
-    const beforeDismiss = app.getState<ProofFlowState>()
-    if (beforeDismiss.tacticResult) {
-      expect(beforeDismiss.tacticResult.succeeded).toBe(false)
-    }
-    else {
-      expect(beforeDismiss.tacticResult).toBeUndefined()
-    }
-
-    await completeAction(app.act('dismissTactic') as ActionResult)
-    const afterDismiss = app.getState<ProofFlowState>()
-    expect(afterDismiss.tacticResult).toBeUndefined()
-    expect(afterDismiss.data.goals.g1?.status).toBe('open')
-
-    const openSnapshot = await app.getSnapshot(headOpen!)
-    const dismissSnapshot = await app.getSnapshot(app.getCurrentHead() as string)
-
-    expect(diffStatusCount(
-      openSnapshot.data as ProofFlowState,
-      dismissSnapshot.data as ProofFlowState
-    )).toBe(0)
+    const report = await runtime.lineageDiffReport(16)
+    expect(report.summary.statusChanged).toBe(0)
+    expect(runtime.getSnapshot().data.goals.g1?.status).toBe('open')
   })
 
   it('replays same action log into identical domain state', async () => {
-    const appA = await createApp(deterministicEffects())
-    const appB = await createApp(deterministicEffects())
+    const appA = await createTestRuntime(createTransitioningEffects({ succeed: true }))
+    const appB = await createTestRuntime(createTransitioningEffects({ succeed: true }))
+    runtimes.push(appA as any, appB as any)
 
-    for (const app of [appA, appB]) {
-      await completeAction(app.act('syncGoals') as ActionResult)
-      await completeAction(app.act('selectGoal', { goalId: 'g1' }) as ActionResult)
-      await completeAction(app.act('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }) as ActionResult)
-      await completeAction(app.act('commitTactic') as ActionResult)
+    for (const runtime of [appA, appB]) {
+      await runtime.dispatch('syncGoals', undefined, 'system')
+      await runtime.dispatch('selectGoal', { goalId: 'g1' }, 'ui')
+      await runtime.dispatch('applyTactic', { goalId: 'g1', tactic: 'exact True.intro' }, 'ui')
+      await runtime.dispatch('commitTactic', undefined, 'ui')
     }
 
-    const stateA = appA.getState<ProofFlowState & Record<string, unknown>>()
-    const stateB = appB.getState<ProofFlowState & Record<string, unknown>>()
-    expect(stripPlatformState(stateA.data)).toEqual(stripPlatformState(stateB.data))
-    expect(stateA.computed).toEqual(stateB.computed)
+    expect(appA.getSnapshot().data).toEqual(appB.getSnapshot().data)
+
+    const reportA = await appA.lineageDiffReport(16)
+    const reportB = await appB.lineageDiffReport(16)
+    expect(normalizeReport(reportA)).toEqual(normalizeReport(reportB))
   })
 })

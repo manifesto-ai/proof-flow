@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState } from '@manifesto-ai/sdk'
+import type { Snapshot } from '@manifesto-ai/sdk'
 import type { ProofFlowState } from '../packages/schema/src/index.js'
 import { selectProjectionState } from '../packages/app/src/projection-state.js'
 
@@ -68,7 +68,7 @@ const baseData = (): ProofFlowState & Record<string, unknown> => ({
   }
 })
 
-const makeState = (overrides?: Partial<AppState<unknown>>): AppState<unknown> => ({
+const makeState = (overrides?: Partial<Snapshot<unknown>>): Snapshot<unknown> => ({
   data: baseData(),
   computed: {},
   system: {

@@ -108,6 +108,33 @@ describe('Forbidden patterns', () => {
     }
   })
 
+  it('FORBID-12b: no app-era runtime surface in active source/tests', async () => {
+    const appFiles = await readDirFiles(join(root, 'packages', 'app', 'src'))
+    const hostFiles = await readDirFiles(join(root, 'packages', 'host', 'src'))
+    const schemaFiles = await readDirFiles(join(root, 'packages', 'schema', 'src'))
+    const testFiles = await readDirFiles(join(root, 'tests'))
+    const files = [...appFiles, ...hostFiles, ...schemaFiles, ...testFiles]
+
+    const forbiddenPatterns = [
+      /createApp\(/,
+      /\.ready\(/,
+      /\.act\(/,
+      /\.done\(/,
+      /\.completed\(/,
+      /createProofFlowApp\b/
+    ]
+
+    for (const file of files) {
+      if (file.path.includes('forbidden.spec.ts')) {
+        continue
+      }
+
+      for (const pattern of forbiddenPatterns) {
+        expect(pattern.test(file.content)).toBe(false)
+      }
+    }
+  })
+
   it('FORBID-13: no removed command/effect references in scripts', async () => {
     const scriptFiles = await readDirFiles(join(root, 'scripts'))
     const forbiddenPatterns = [
@@ -156,7 +183,8 @@ describe('Forbidden patterns', () => {
   it('FORBID-15: extension wiring keeps persistence default to in-memory', async () => {
     const extensionSource = await readFile(join(root, 'packages', 'app', 'src', 'extension.ts'), 'utf8')
 
-    expect(/createProofFlowApp\(\s*\{[\s\S]*?schema\s*,[\s\S]*?effects:\s*proofFlowEffects\s*,?[\s\S]*?\}\s*\)/m.test(extensionSource)).toBe(true)
-    expect(/createProofFlowApp\([\s\S]*?\bworld\s*:/m.test(extensionSource)).toBe(false)
+    expect(/createProofFlowRuntime\(\s*\{[\s\S]*?schema\s*,[\s\S]*?effects:\s*proofFlowEffects\s*,?[\s\S]*?\}\s*\)/m.test(extensionSource)).toBe(true)
+    expect(/\bcreateMemoryWorldStore\(/.test(extensionSource)).toBe(false)
+    expect(/\bworld\s*:/.test(extensionSource)).toBe(false)
   })
 })

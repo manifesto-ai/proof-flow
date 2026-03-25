@@ -28,7 +28,7 @@
 
 현재 기본값은 **in-memory** 다.
 
-- `createProofFlowApp` 기본 생성에서 `world` 주입은 수행하지 않는다.
+- `createProofFlowRuntime`은 내부적으로 explicit `@manifesto-ai/world` + `createMemoryWorldStore()`를 사용한다.
 - 영속 checkpoint/병합/리플레이 정책은 기본 동작으로 제공하지 않는다.
 - 영속 World는 실험 옵션으로만 허용되며, 실험 시에도 메모리 기본 동작과 동일한 재현성/액션 순서를 유지해야 한다.
 
@@ -36,6 +36,8 @@
 
 활성 계약은 다음 조합을 기준으로 유지한다.
 
+- SDK 진입점: `createManifesto`
+- lineage 백엔드: explicit `@manifesto-ai/world`
 - 액션: `syncGoals / applyTactic / commitTactic / dismissTactic / selectGoal`
 - effect: `lean.syncGoals`, `lean.applyTactic`
 - 패널: `stateUpdate` + 아웃바운드 5개(`selectGoal`, `applyTactic`, `commitTactic`, `dismissTactic`, `togglePanel`)

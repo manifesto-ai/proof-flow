@@ -1,20 +1,10 @@
 import path from 'node:path'
 import * as vscode from 'vscode'
-import type { App } from '@manifesto-ai/sdk'
-import type { Goal, ProofFlowState, TacticResult } from '@proof-flow/schema'
-import { createProofFlowApp } from './config.js'
-import {
-  createVscodeProofFlowEffects,
-  isLeanDocument,
-  isLeanUri
-} from './effects-adapter.js'
-import type { ProjectionState } from './projection-state.js'
-import {
-  ProjectionPanelController,
-  selectProjectionState
-} from './webview-panel.js'
+import { createProofFlowRuntime, type ProofFlowDispatchSourceKind, type ProofFlowRuntime } from './runtime.js'
+import { createVscodeProofFlowEffects, isLeanDocument, isLeanUri } from './effects-adapter.js'
+import { ProjectionPanelController, selectProjectionState } from './webview-panel.js'
 
-let app: App | null = null
+let runtime: ProofFlowRuntime | null = null
 let panelController: ProjectionPanelController | null = null
 let panelVisible = true
 
@@ -90,9 +80,9 @@ const readDomainMel = async (context: vscode.ExtensionContext): Promise<string> 
   throw new Error('ProofFlow schema (domain.mel) not found. Set `proofFlow.schemaPath` if needed.')
 }
 
-const ensureApp = async (context: vscode.ExtensionContext): Promise<App> => {
-  if (app) {
-    return app
+const ensureRuntime = async (context: vscode.ExtensionContext): Promise<ProofFlowRuntime> => {
+  if (runtime) {
+    return runtime
   }
 
   const workspace = vscode.workspace.workspaceFolders?.[0]
@@ -101,42 +91,12 @@ const ensureApp = async (context: vscode.ExtensionContext): Promise<App> => {
   }
 
   const schema = await readDomainMel(context)
-  app = createProofFlowApp({
+  runtime = await createProofFlowRuntime({
     schema,
     effects: proofFlowEffects
   })
-  await app.ready()
-  return app
-}
 
-type ActResult = {
-  completed?: () => Promise<unknown>
-  done?: () => Promise<unknown>
-}
-
-const awaitActionCompletion = async (result: ActResult | null | undefined): Promise<void> => {
-  if (result && typeof result.completed === 'function') {
-    await result.completed()
-    return
-  }
-
-  if (result && typeof result.done === 'function') {
-    await result.done()
-  }
-}
-
-const actSafely = async (type: string, input?: unknown): Promise<void> => {
-  if (!app) {
-    return
-  }
-
-  try {
-    await awaitActionCompletion(app.act(type, input) as ActResult)
-  }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    void vscode.window.showWarningMessage(`[ProofFlow] ${type} failed: ${message}`)
-  }
+  return runtime
 }
 
 const parseLineageDiffInput = (params: unknown): { limit: number } => {
@@ -154,276 +114,53 @@ const parseLineageDiffInput = (params: unknown): { limit: number } => {
   }
 }
 
-type GoalLite = {
-  id: string
-  status: string
-  statement: string
-}
-
-type LineageDiffEntry = {
-  fromWorldId: string
-  toWorldId: string
-  fromCreatedAt: number | null
-  toCreatedAt: number | null
-  counts: {
-    added: number
-    removed: number
-    statusChanged: number
-  }
-  addedGoals: GoalLite[]
-  removedGoals: GoalLite[]
-  statusChanges: Array<{
-    id: string
-    fromStatus: string
-    toStatus: string
-    statement: string
-  }>
-  fromTacticResult: TacticResult | null
-  toTacticResult: TacticResult | null
-}
-
-const asRecord = (value: unknown): Record<string, unknown> | null => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return null
+const dispatchSafely = async (
+  type: string,
+  input?: unknown,
+  sourceKind: ProofFlowDispatchSourceKind = 'ui'
+): Promise<void> => {
+  if (!runtime) {
+    return
   }
 
-  return value as Record<string, unknown>
-}
-
-const asNullableNumber = (value: unknown): number | null => (
-  typeof value === 'number' && Number.isFinite(value) ? value : null
-)
-
-const asString = (value: unknown): string | null => (
-  typeof value === 'string' && value.length > 0 ? value : null
-)
-
-const asNullableString = (value: unknown): string | null => (
-  typeof value === 'string' ? value : null
-)
-
-const extractStateData = (snapshot: unknown): Record<string, unknown> | null => {
-  const snapshotRecord = asRecord(snapshot)
-  if (!snapshotRecord) {
-    return null
+  try {
+    await runtime.dispatch(type, input, sourceKind)
   }
-
-  if (asRecord(snapshotRecord.goals)) {
-    return snapshotRecord
-  }
-
-  const nested = asRecord(snapshotRecord.data)
-  if (nested && asRecord(nested.goals)) {
-    return nested
-  }
-
-  return null
-}
-
-const extractGoals = (stateData: Record<string, unknown> | null): Map<string, GoalLite> => {
-  const goals = asRecord(stateData?.goals)
-  const result = new Map<string, GoalLite>()
-
-  if (!goals) {
-    return result
-  }
-
-  for (const [goalId, entry] of Object.entries(goals)) {
-    const goal = asRecord(entry)
-    const id = asString(goal?.id) ?? goalId
-    const statement = asString(goal?.statement)
-    const status = asString(goal?.status)
-
-    if (!id || !statement || !status) {
-      continue
-    }
-
-    result.set(id, {
-      id,
-      status,
-      statement
-    })
-  }
-
-  return result
-}
-
-const normalizeTacticResult = (stateData: Record<string, unknown> | null): TacticResult | null => {
-  const value = asRecord(stateData?.tacticResult)
-  if (!value) {
-    return null
-  }
-
-  const goalId = asString(value.goalId)
-  const tactic = asString(value.tactic)
-  const succeeded = value.succeeded
-  const newGoalIds = value.newGoalIds
-  const errorMessage = asNullableString(value.errorMessage)
-
-  if (!goalId || !tactic || typeof succeeded !== 'boolean' || !Array.isArray(newGoalIds)) {
-    return null
-  }
-
-  return {
-    goalId,
-    tactic,
-    succeeded,
-    newGoalIds: newGoalIds.filter((entry): entry is string => typeof entry === 'string'),
-    errorMessage
-  }
-}
-
-const diffGoals = (
-  fromGoals: Map<string, GoalLite>,
-  toGoals: Map<string, GoalLite>
-): Omit<LineageDiffEntry, 'fromWorldId' | 'toWorldId' | 'fromCreatedAt' | 'toCreatedAt' | 'fromTacticResult' | 'toTacticResult'> => {
-  const addedGoals: GoalLite[] = []
-  const removedGoals: GoalLite[] = []
-  const statusChanges: Array<{ id: string; fromStatus: string; toStatus: string; statement: string }> = []
-
-  for (const [id, goal] of toGoals.entries()) {
-    if (!fromGoals.has(id)) {
-      addedGoals.push(goal)
-    }
-  }
-
-  for (const [id, goal] of fromGoals.entries()) {
-    if (!toGoals.has(id)) {
-      removedGoals.push(goal)
-      continue
-    }
-
-    const nextGoal = toGoals.get(id)
-    if (nextGoal && nextGoal.status !== goal.status) {
-      statusChanges.push({
-        id,
-        fromStatus: goal.status,
-        toStatus: nextGoal.status,
-        statement: nextGoal.statement
-      })
-    }
-  }
-
-  addedGoals.sort((left, right) => left.id.localeCompare(right.id))
-  removedGoals.sort((left, right) => left.id.localeCompare(right.id))
-  statusChanges.sort((left, right) => left.id.localeCompare(right.id))
-
-  return {
-    counts: {
-      added: addedGoals.length,
-      removed: removedGoals.length,
-      statusChanged: statusChanges.length
-    },
-    addedGoals,
-    removedGoals,
-    statusChanges
-  }
-}
-
-const snapshotLineageDiff = async (
-  input: { limit: number }
-): Promise<Record<string, unknown> | null> => {
-  const runtimeApp = app
-  if (!runtimeApp) {
-    return null
-  }
-
-  const branch = runtimeApp.currentBranch()
-  const headWorldId = runtimeApp.getCurrentHead?.() ?? branch.head?.() ?? null
-  const rawLineage = branch.lineage({ limit: input.limit })
-  const deduped = [...new Set(rawLineage.filter((worldId) => typeof worldId === 'string' && worldId.length > 0))]
-  const orderedWorldIds = headWorldId && deduped[0] === headWorldId
-    ? [...deduped].reverse()
-    : deduped
-
-  const getWorld = runtimeApp.getWorld as unknown as ((this: App, id: string) => Promise<unknown>) | undefined
-  const getSnapshot = runtimeApp.getSnapshot as unknown as ((this: App, id: string) => Promise<unknown>) | undefined
-
-  const entries = await Promise.all(orderedWorldIds.map(async (worldId) => {
-    const world = getWorld ? await getWorld.call(runtimeApp, worldId) : null
-    const snapshot = getSnapshot ? await getSnapshot.call(runtimeApp, worldId) : null
-    return {
-      worldId,
-      createdAt: asNullableNumber(asRecord(world)?.createdAt),
-      stateData: extractStateData(snapshot)
-    }
-  }))
-
-  const diffs: LineageDiffEntry[] = []
-  for (let index = 1; index < entries.length; index += 1) {
-    const fromEntry = entries[index - 1]
-    const toEntry = entries[index]
-    if (!fromEntry || !toEntry) {
-      continue
-    }
-
-    const fromGoals = extractGoals(fromEntry.stateData)
-    const toGoals = extractGoals(toEntry.stateData)
-
-    diffs.push({
-      fromWorldId: fromEntry.worldId,
-      toWorldId: toEntry.worldId,
-      fromCreatedAt: fromEntry.createdAt,
-      toCreatedAt: toEntry.createdAt,
-      ...diffGoals(fromGoals, toGoals),
-      fromTacticResult: normalizeTacticResult(fromEntry.stateData),
-      toTacticResult: normalizeTacticResult(toEntry.stateData)
-    })
-  }
-
-  const summary = diffs.reduce((acc, entry) => ({
-    edges: acc.edges + 1,
-    added: acc.added + entry.counts.added,
-    removed: acc.removed + entry.counts.removed,
-    statusChanged: acc.statusChanged + entry.counts.statusChanged
-  }), {
-    edges: 0,
-    added: 0,
-    removed: 0,
-    statusChanged: 0
-  })
-
-  return {
-    measuredAt: new Date().toISOString(),
-    branch: {
-      branchId: branch.id ?? null,
-      branchName: branch.name ?? null,
-      headWorldId,
-      lineageLength: entries.length
-    },
-    summary,
-    worldIds: entries.map((entry) => entry.worldId),
-    diffs
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    void vscode.window.showWarningMessage(`[ProofFlow] ${type} failed: ${message}`)
   }
 }
 
 export async function activate(context: vscode.ExtensionContext) {
   panelController = new ProjectionPanelController(context, {
     onSelectGoal: async (goalId) => {
-      await actSafely('selectGoal', { goalId })
+      await dispatchSafely('selectGoal', { goalId }, 'ui')
     },
     onApplyTactic: async (goalId, tactic) => {
-      await actSafely('applyTactic', { goalId, tactic })
+      await dispatchSafely('applyTactic', { goalId, tactic }, 'ui')
     },
     onCommitTactic: async () => {
-      await actSafely('commitTactic')
+      await dispatchSafely('commitTactic', undefined, 'ui')
     },
     onDismissTactic: async () => {
-      await actSafely('dismissTactic')
+      await dispatchSafely('dismissTactic', undefined, 'ui')
     },
     onTogglePanel: async () => {
       panelVisible = !panelVisible
       if (panelVisible) {
         panelController?.reveal()
       }
-      publishPanelState()
+      if (runtime) {
+        panelController?.setState(selectProjectionState(runtime.getSnapshot(), panelVisible))
+      }
     }
   })
   context.subscriptions.push(panelController)
 
-  let readyApp: App
+  let readyRuntime: ProofFlowRuntime
   try {
-    readyApp = await ensureApp(context)
+    readyRuntime = await ensureRuntime(context)
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -432,25 +169,22 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   const publishPanelState = (): void => {
-    if (!app) {
+    if (!runtime) {
       return
     }
 
-    const projection = selectProjectionState(app.getState(), panelVisible)
-    panelController?.setState(projection)
+    panelController?.setState(selectProjectionState(runtime.getSnapshot(), panelVisible))
   }
 
-  const unsubscribeProjection = readyApp.subscribe(
-    (state) => selectProjectionState(state, panelVisible),
-    (projection: ProjectionState) => {
-      panelController?.setState(projection)
-    },
-    { fireImmediately: true }
-  )
+  const unsubscribeProjection = readyRuntime.subscribe((snapshot) => {
+    panelController?.setState(selectProjectionState(snapshot, panelVisible))
+  })
   context.subscriptions.push(new vscode.Disposable(unsubscribeProjection))
 
+  publishPanelState()
+
   const syncGoals = async (): Promise<void> => {
-    await actSafely('syncGoals')
+    await dispatchSafely('syncGoals', undefined, 'system')
   }
 
   const togglePanel = vscode.commands.registerCommand('proof-flow.hello', async () => {
@@ -463,7 +197,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const lineageDiffReportCommand = vscode.commands.registerCommand(
     'proof-flow.lineageDiffReport',
-    async (params?: unknown) => snapshotLineageDiff(parseLineageDiffInput(params))
+    async (params?: unknown) => runtime?.lineageDiffReport(parseLineageDiffInput(params).limit) ?? null
   )
 
   const onEditorChange = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
@@ -508,10 +242,6 @@ export async function deactivate() {
   panelController?.dispose()
   panelController = null
 
-  if (!app) {
-    return
-  }
-
-  await app.dispose()
-  app = null
+  runtime?.dispose()
+  runtime = null
 }

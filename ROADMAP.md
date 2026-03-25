@@ -1,9 +1,11 @@
-# ProofFlow Roadmap (Manifesto-Native Hard-Cut)
+# ProofFlow Roadmap (Manifesto Latest-Line Super Hard-Cut)
 
-## Snapshot (2026-02-19)
+## Snapshot (2026-03-25)
 - 아키텍처 기준: `packages/schema + packages/host + packages/app` 인플레이스 하드컷.
 - 도메인(MEL)은 `Goal/Tactic` 의미만 유지.
 - Lean/LSP/DAG/진단/위치는 `$host.leanState`로 격리.
+- 실행 진입점은 최신 public SDK `createManifesto` + explicit `@manifesto-ai/world`.
+- lineage는 SDK event tape가 아니라 explicit World lineage로 기록.
 - UI는 증명 작업 흐름(Progress/Goal/Tactic/Proof Map/Lineage) 중심으로 최소화.
 
 ## KPI Gate List (Proof-Value Evidence)
@@ -19,6 +21,11 @@
 - [x] `goalId` 안정성: `tests/host-effects.spec.ts`, `scripts/vscode-goal-fidelity-suite.cjs`
 
 ## Active Contracts (v2)
+### Manifesto runtime contract
+- SDK entry: `createManifesto`
+- world lineage: explicit `createManifestoWorld`
+- app-era API 제거: `createApp`, `.ready()`, `.act()`, `.done()/.completed()`, `currentBranch`, `getCurrentHead`, `getWorld()`, `getSnapshot(worldId)`
+
 ### MEL actions
 - `syncGoals`
 - `applyTactic(goalId, tactic)`
@@ -59,8 +66,8 @@
 - [x] extension 이벤트 파이프라인 단순화 (`syncGoals` 중심)
 - [x] panel/webview 계약 단순화 및 최소 UX로 축소
 - [x] `@manifesto-ai/app` → `@manifesto-ai/sdk` 마이그레이션 완료
-  - 앱 생성/타입 경로 정합
-  - `act` 완료 대기 API를 `completed()` 우선으로 정렬
+  - 최신 public SDK `createManifesto` 기준으로 하드컷 재정렬
+  - explicit `@manifesto-ai/world` lineage 백엔드 도입
   - 도메인 계약 대비 `lean.syncGoals`, `lean.applyTactic` effect 유효성 고정
 - [x] lineage diff 리포트 포맷을 goal 상태 전이 중심으로 교체
 - [x] 테스트 스위트 하드컷 기준 재작성

@@ -1,4 +1,4 @@
-import type { AppState } from '@manifesto-ai/sdk'
+import type { Snapshot } from '@manifesto-ai/sdk'
 import type { LeanDiagnostic } from '@proof-flow/host'
 import type {
   Goal,
@@ -298,7 +298,7 @@ const normalizeTacticResult = (value: unknown): TacticResult | null => {
 }
 
 export const selectProjectionState = (
-  appState: AppState<unknown>,
+  appState: Snapshot<unknown>,
   panelVisible: boolean
 ): ProjectionState => {
   const stateData = appState.data as ProofFlowState & Record<string, unknown>
@@ -310,7 +310,7 @@ export const selectProjectionState = (
   const hostState = parseHostLeanState(stateData)
   const nodes = toProjectionNodes(hostState, goals)
 
-  const computedPending = computed['computed.isTacticPending']
+  const computedPending = computed.isTacticPending ?? computed['computed.isTacticPending']
   const isTacticPending = typeof computedPending === 'boolean'
     ? computedPending
     : Boolean(stateData.applyingTactic && stateData.tacticResult)

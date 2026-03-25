@@ -8,7 +8,8 @@ import type {
 import {
   asRecord,
   getSnapshotData,
-  type HostEffectHandler
+  type HostEffectHandler,
+  proofFlowOps
 } from './types.js'
 
 export type CreateLeanApplyTacticEffectOptions = {
@@ -20,7 +21,7 @@ export type CreateLeanApplyTacticEffectOptions = {
 type ApplyParams = {
   goalId: string
   tactic: string
-  into: string
+  into: 'tacticResult'
 }
 
 const parseInput = (params: unknown): ApplyParams | null => {
@@ -37,7 +38,7 @@ const parseInput = (params: unknown): ApplyParams | null => {
     return null
   }
 
-  if (typeof into !== 'string' || into.length === 0) {
+  if (into !== 'tacticResult') {
     return null
   }
 
@@ -113,7 +114,7 @@ export const createLeanApplyTacticEffect = (
   }
 
   if (!fileUri) {
-    return [{ op: 'set', path: input.into, value: baseResult }]
+    return [proofFlowOps.set('tacticResult', baseResult)]
   }
 
   const previousGoalIds = resolveGoalKeys(snapshotData)
@@ -126,7 +127,7 @@ export const createLeanApplyTacticEffect = (
       range: resolveGoalRange(snapshotData, input.goalId)
     })
 
-    let hostPatch: { op: 'set'; path: '$host.leanState'; value: unknown } | null = null
+    let hostPatch: ReturnType<typeof proofFlowOps.raw.set> | null = null
     let newGoalIds: string[] = []
 
     const context = await options.loadContext()
@@ -135,7 +136,7 @@ export const createLeanApplyTacticEffect = (
 
     if (context) {
       const derived = deriveLeanState(context, options.now?.() ?? Date.now())
-      hostPatch = { op: 'set', path: '$host.leanState', value: derived.hostState }
+      hostPatch = proofFlowOps.raw.set('$host.leanState', derived.hostState)
       newGoalIds = Object.keys(derived.goals).filter((goalId) => !previousGoalIds.has(goalId))
 
       const afterTarget = derived.goals[input.goalId]
@@ -145,18 +146,14 @@ export const createLeanApplyTacticEffect = (
       }
     }
 
-    const patches: Array<{ op: 'set'; path: string; value: unknown }> = [
-      {
-        op: 'set',
-        path: input.into,
-        value: {
-          goalId: input.goalId,
-          tactic: input.tactic,
-          succeeded,
-          newGoalIds,
-          errorMessage
-        }
-      }
+    const patches = [
+      proofFlowOps.set('tacticResult', {
+        goalId: input.goalId,
+        tactic: input.tactic,
+        succeeded,
+        newGoalIds,
+        errorMessage
+      })
     ]
 
     if (hostPatch) {
@@ -170,9 +167,9 @@ export const createLeanApplyTacticEffect = (
       ? error.message
       : 'failed to apply tactic'
 
-    return [{ op: 'set', path: input.into, value: {
+    return [proofFlowOps.set('tacticResult', {
       ...baseResult,
       errorMessage: message
-    } }]
+    })]
   }
 }
